@@ -40,7 +40,6 @@ namespace apiDefs
         constexpr QLatin1String lastDownloaded("last_downloaded");
         constexpr QLatin1String sourceType("source_type");
         constexpr QLatin1String appLanguage("app_language");
-        constexpr QLatin1String market("market");
 
         constexpr QLatin1String activeDeviceCount("active_device_count");
         constexpr QLatin1String maxDeviceCount("max_device_count");

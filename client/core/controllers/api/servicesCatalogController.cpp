@@ -217,12 +217,6 @@ ErrorCode ServicesCatalogController::fillAvailableServices(QJsonObject &services
     apiPayload[apiDefs::key::appVersion] = QString(APP_VERSION);
     apiPayload[apiDefs::key::cliName] = QString(APPLICATION_NAME);
     apiPayload[apiDefs::key::appLanguage] = m_appSettingsRepository->getAppLanguage().name().split("_").first();
-#if defined(Q_OS_ANDROID)
-    apiPayload[apiDefs::key::market] = QStringLiteral("playmarket");
-#else
-    apiPayload[apiDefs::key::market] = QStringLiteral("appstore");
-#endif
-
 
     QByteArray responseBody;
     ErrorCode errorCode = executeRequest(QString("%1v1/services"), apiPayload, responseBody);

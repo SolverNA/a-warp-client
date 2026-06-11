@@ -164,7 +164,7 @@ void WarpController::registerAccount(const std::function<void(bool ok, const War
 {
     const auto keys = WireguardConfigurator::genClientKeys();
     if (keys.clientPrivKey.isEmpty() || keys.clientPubKey.isEmpty()) {
-        fail(tr("Failed to generate WireGuard keys"));
+        fail(tr("Не удалось сгенерировать ключи WireGuard"));
         onDone(false, {});
         return;
     }
@@ -180,7 +180,7 @@ void WarpController::registerAccount(const std::function<void(bool ok, const War
     sendRequestAsync("POST", kRegEndpoint, regBody, QString(),
                      [this, keys, onDone](bool ok, const QJsonObject &response, const QString &errorMessage) {
         if (!ok) {
-            fail(tr("Cloudflare WARP registration failed: %1").arg(errorMessage));
+            fail(tr("Не удалось зарегистрироваться в Cloudflare WARP: %1").arg(errorMessage));
             onDone(false, {});
             return;
         }
@@ -189,7 +189,7 @@ void WarpController::registerAccount(const std::function<void(bool ok, const War
         const QString accountId = account.value("id").toString();
         const QString token = account.value("token").toString();
         if (accountId.isEmpty() || token.isEmpty()) {
-            fail(tr("Cloudflare WARP registration failed: unexpected response format"));
+            fail(tr("Не удалось зарегистрироваться в Cloudflare WARP: неожиданный формат ответа"));
             onDone(false, {});
             return;
         }
@@ -200,7 +200,7 @@ void WarpController::registerAccount(const std::function<void(bool ok, const War
         sendRequestAsync("PATCH", QStringLiteral("%1/%2").arg(kRegEndpoint, accountId), patchBody, token,
                          [this, keys, onDone](bool ok, const QJsonObject &response, const QString &errorMessage) {
             if (!ok) {
-                fail(tr("Failed to enable WARP for the registered account: %1").arg(errorMessage));
+                fail(tr("Не удалось включить WARP для зарегистрированного аккаунта: %1").arg(errorMessage));
                 onDone(false, {});
                 return;
             }
@@ -217,7 +217,7 @@ void WarpController::registerAccount(const std::function<void(bool ok, const War
             session.addressV6 = addresses.value("v6").toString();
 
             if (session.peerPublicKey.isEmpty() || (session.addressV4.isEmpty() && session.addressV6.isEmpty())) {
-                fail(tr("Cloudflare WARP returned an incomplete configuration"));
+                fail(tr("Cloudflare WARP вернул неполный конфиг"));
                 onDone(false, {});
                 return;
             }
@@ -255,7 +255,7 @@ void WarpController::sendRequestAsync(const QByteArray &verb, const QString &end
         const QJsonObject response = QJsonDocument::fromJson(reply->readAll()).object();
         if (response.isEmpty()) {
             logger.error() << "Request to" << endpoint << "returned an invalid JSON response";
-            onDone(false, {}, tr("invalid response from the server"));
+            onDone(false, {}, tr("некорректный ответ сервера"));
             return;
         }
 
@@ -270,7 +270,7 @@ void WarpController::importNewConfig(const WarpSession &session)
     auto importResult = m_importController->extractConfigFromData(
             buildConfigText(session.clientPrivateKey, session.addresses(), session.peerPublicKey, defaultParams()));
     if (importResult.errorCode != ErrorCode::NoError || importResult.config.isEmpty()) {
-        fail(tr("Failed to process the generated WARP configuration"));
+        fail(tr("Не удалось обработать полученный WARP-конфиг"));
         return;
     }
 
@@ -290,7 +290,7 @@ void WarpController::updateExistingConfig(const QString &serverId, const WarpSes
 {
     auto serverConfig = m_serversRepository->nativeConfig(serverId);
     if (!serverConfig.has_value()) {
-        fail(tr("Failed to read the saved WARP configuration"));
+        fail(tr("Не удалось прочитать сохранённый WARP-конфиг"));
         return;
     }
 
@@ -298,7 +298,7 @@ void WarpController::updateExistingConfig(const QString &serverId, const WarpSes
     ContainerConfig containerConfig = serverConfig->containerConfig(container);
     AwgProtocolConfig *awgConfig = containerConfig.getAwgProtocolConfig();
     if (!awgConfig || !awgConfig->hasClientConfig()) {
-        fail(tr("Failed to read the saved WARP configuration"));
+        fail(tr("Не удалось прочитать сохранённый WARP-конфиг"));
         return;
     }
 

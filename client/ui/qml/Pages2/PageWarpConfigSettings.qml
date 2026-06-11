@@ -532,7 +532,7 @@ PageType {
                 textColor: AmneziaStyle.color.paleGray
                 borderWidth: 1
 
-                text: qsTr("Сбросить к дефолтам")
+                text: qsTr("Сбросить к значениям по умолчанию")
 
                 clickedFunc: function() {
                     delegateItem.loadFields(WarpController.getDefaultConfigFields())

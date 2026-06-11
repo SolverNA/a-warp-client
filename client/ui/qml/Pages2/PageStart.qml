@@ -151,7 +151,7 @@ PageType {
 
         function onNoInstalledContainers() {
             // WARP-only client: instead of the setup wizard, re-request the WARP config
-            PageController.showNotificationMessage(qsTr("Конфиг WARP ещё не получен, запрашиваю заново..."))
+            PageController.showNotificationMessage(qsTr("Конфиг WARP ещё не получен — запрашиваю заново..."))
             if (!WarpController.isBusy) {
                 WarpController.fetchNewConfig()
             }

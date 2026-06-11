@@ -17,7 +17,11 @@ Button {
     property bool buttonActiveFocus: activeFocus && (Qt.platform.os !== "android" || SettingsController.isOnTv())
 
     property bool isFocusable: true
-    
+
+    // WARP-only client: connection is unavailable until the WARP config is fetched
+    property bool isConfigMissing: !WarpController.hasConfig
+    property bool isConfigFetching: isConfigMissing && WarpController.isBusy
+
     Keys.onTabPressed: {
         FocusController.nextKeyTabItem()
     }
@@ -45,7 +49,15 @@ Button {
     implicitWidth: 190
     implicitHeight: 190
 
-    text: ConnectionController.connectionStateText
+    text: {
+        if (root.isConfigFetching) {
+            return qsTr("Получение конфига...")
+        }
+        if (root.isConfigMissing) {
+            return qsTr("Получить конфиг")
+        }
+        return ConnectionController.connectionStateText
+    }
 
     Connections {
         target: ConnectionController
@@ -55,7 +67,8 @@ Button {
         }
     }
 
-//    enabled: !ConnectionController.isConnectionInProgress
+    // Without a config the button only retries the config fetch; while fetching it is disabled
+    enabled: !root.isConfigFetching
 
     background: Item {
         implicitWidth: parent.width
@@ -100,7 +113,7 @@ Button {
             ShapePath {
                 fillColor: AmneziaStyle.color.transparent
                 strokeColor: {
-                    if (ConnectionController.isConnectionInProgress) {
+                    if (ConnectionController.isConnectionInProgress || root.isConfigFetching) {
                         return AmneziaStyle.color.darkCharcoal
                     } else if (ConnectionController.isConnected) {
                         return connectedButtonColor
@@ -138,7 +151,7 @@ Button {
             layer.enabled: true
             layer.samples: 4
 
-            visible: ConnectionController.isConnectionInProgress
+            visible: ConnectionController.isConnectionInProgress || root.isConfigFetching
 
             ShapePath {
                 fillColor: AmneziaStyle.color.transparent
@@ -158,7 +171,7 @@ Button {
 
             RotationAnimator {
                 target: shape
-                running: ConnectionController.isConnectionInProgress
+                running: ConnectionController.isConnectionInProgress || root.isConfigFetching
                 from: 0
                 to: 360
                 loops: Animation.Infinite
@@ -182,6 +195,11 @@ Button {
     }
 
     onClicked: {
+        if (root.isConfigMissing) {
+            // Retry fetching the WARP config instead of connecting
+            WarpController.fetchNewConfig()
+            return
+        }
         ConnectionController.connectButtonClicked()
     }
 

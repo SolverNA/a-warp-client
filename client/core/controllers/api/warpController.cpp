@@ -72,11 +72,19 @@ WarpController::WarpController(SecureServersRepository *serversRepository,
       m_appSettingsRepository(appSettingsRepository),
       m_importController(importController)
 {
+    // hasConfig depends on the stored servers, so any add/remove may change it
+    connect(m_serversRepository, &SecureServersRepository::serverAdded, this, &WarpController::hasConfigChanged);
+    connect(m_serversRepository, &SecureServersRepository::serverRemoved, this, &WarpController::hasConfigChanged);
 }
 
 bool WarpController::hasConfig() const
 {
     return !findWarpServerId().isEmpty();
+}
+
+bool WarpController::isBusy() const
+{
+    return m_isBusy;
 }
 
 void WarpController::fetchNewConfig()

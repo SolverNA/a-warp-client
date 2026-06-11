@@ -24,14 +24,10 @@ PageType {
         target: PageController
 
         function onGoToPageHome() {
-            if (PageController.isStartPageVisible()) {
-                tabBar.visible = false
-                tabBarStackView.goToTabBarPage(PageEnum.PageSetupWizardStart)
-            } else {
-                tabBar.visible = true
-                tabBar.setCurrentIndex(0)
-                tabBarStackView.goToTabBarPage(PageEnum.PageHome)
-            }
+            // WARP-only client: setup wizard is never shown, always go to PageHome
+            tabBar.visible = true
+            tabBar.setCurrentIndex(0)
+            tabBarStackView.goToTabBarPage(PageEnum.PageHome)
         }
 
         function onGoToPageSettings() {
@@ -209,6 +205,20 @@ PageType {
     }
 
     Connections {
+        objectName: "warpControllerConnections"
+
+        target: WarpController
+
+        function onConfigReady() {
+            PageController.showNotificationMessage(qsTr("Конфиг WARP получен"))
+        }
+
+        function onErrorOccurred(error) {
+            PageController.showErrorMessage(error)
+        }
+    }
+
+    Connections {
         target: SubscriptionUiController
 
         function onApiConfigRemoved(message) {
@@ -259,17 +269,16 @@ PageType {
         }
 
         Component.onCompleted: {
-            var pagePath
-            if (PageController.isStartPageVisible()) {
-                tabBar.visible = false
-                pagePath = PageController.getPagePath(PageEnum.PageSetupWizardStart)
-            } else {
-                tabBar.visible = true
-                pagePath = PageController.getPagePath(PageEnum.PageHome)
-                ServersUiController.setProcessedServerId(ServersUiController.defaultServerId)
-            }
+            // WARP-only client: setup wizard is never shown, always start on PageHome
+            tabBar.visible = true
+            var pagePath = PageController.getPagePath(PageEnum.PageHome)
+            ServersUiController.setProcessedServerId(ServersUiController.defaultServerId)
 
             tabBarStackView.push(pagePath, { "objectName" : pagePath })
+
+            if (!WarpController.hasConfig) {
+                WarpController.fetchNewConfig()
+            }
         }
 
         Keys.onPressed: function(event) {

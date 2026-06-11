@@ -15,12 +15,16 @@ class WarpController : public QObject
 {
     Q_OBJECT
 
+    Q_PROPERTY(bool hasConfig READ hasConfig NOTIFY hasConfigChanged)
+    Q_PROPERTY(bool isBusy READ isBusy NOTIFY busyChanged)
+
 public:
     explicit WarpController(SecureServersRepository *serversRepository,
                             SecureAppSettingsRepository *appSettingsRepository,
                             ImportController *importController, QObject *parent = nullptr);
 
-    Q_INVOKABLE bool hasConfig() const;
+    bool hasConfig() const;
+    bool isBusy() const;
     Q_INVOKABLE QString getConfigJson() const;
     Q_INVOKABLE bool saveConfig(const QString &configJson);
 
@@ -33,6 +37,7 @@ signals:
     void configUpdated();
     void errorOccurred(const QString &errorMessage);
     void busyChanged(bool busy);
+    void hasConfigChanged();
 
 private:
     struct WarpSession

@@ -16,6 +16,9 @@ PageType {
     // Our own WARP config page has no PageEnum; AwarpMain handles it via this signal.
     signal openWarpConfigRequested()
 
+    // Our own About page has no PageEnum; AwarpMain handles it via this signal.
+    signal openAboutRequested()
+
     ListViewType {
         id: listView
 
@@ -177,7 +180,7 @@ PageType {
         readonly property string leftImagePath: "qrc:/images/controls/info.svg"
         property bool isVisible: true
         readonly property var clickedHandler: function() {
-            PageController.goToPage(PageEnum.PageSettingsAbout)
+            root.openAboutRequested()
         }
     }
 }

@@ -1,0 +1,9 @@
+<RCC>
+    <qresource prefix="/ui/qml/Awarp">
+        <file>AwarpMain.qml</file>
+        <file>AwarpPageHome.qml</file>
+        <file>AwarpPageSettings.qml</file>
+        <file>AwarpConnectButton.qml</file>
+        <file>AwarpPageWarpConfigSettings.qml</file>
+    </qresource>
+</RCC>

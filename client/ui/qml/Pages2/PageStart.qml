@@ -24,10 +24,14 @@ PageType {
         target: PageController
 
         function onGoToPageHome() {
-            // WARP-only client: setup wizard is never shown, always go to PageHome
-            tabBar.visible = true
-            tabBar.setCurrentIndex(0)
-            tabBarStackView.goToTabBarPage(PageEnum.PageHome)
+            if (PageController.isStartPageVisible()) {
+                tabBar.visible = false
+                tabBarStackView.goToTabBarPage(PageEnum.PageSetupWizardStart)
+            } else {
+                tabBar.visible = true
+                tabBar.setCurrentIndex(0)
+                tabBarStackView.goToTabBarPage(PageEnum.PageHome)
+            }
         }
 
         function onGoToPageSettings() {
@@ -150,11 +154,10 @@ PageType {
         }
 
         function onNoInstalledContainers() {
-            // WARP-only client: instead of the setup wizard, re-request the WARP config
-            PageController.showNotificationMessage(qsTr("Конфиг WARP ещё не получен — запрашиваю заново..."))
-            if (!WarpController.isBusy) {
-                WarpController.fetchNewConfig()
-            }
+            PageController.setTriggeredByConnectButton(true)
+
+            ServersUiController.setProcessedServerId(ServersUiController.defaultServerId)
+            PageController.goToPage(PageEnum.PageSetupWizardEasy)
         }
     }
 
@@ -199,20 +202,6 @@ PageType {
 
     Connections {
         target: SubscriptionUiController
-
-        function onErrorOccurred(error) {
-            PageController.showErrorMessage(error)
-        }
-    }
-
-    Connections {
-        objectName: "warpControllerConnections"
-
-        target: WarpController
-
-        function onConfigReady() {
-            PageController.showNotificationMessage(qsTr("Конфиг WARP получен"))
-        }
 
         function onErrorOccurred(error) {
             PageController.showErrorMessage(error)
@@ -270,16 +259,17 @@ PageType {
         }
 
         Component.onCompleted: {
-            // WARP-only client: setup wizard is never shown, always start on PageHome
-            tabBar.visible = true
-            var pagePath = PageController.getPagePath(PageEnum.PageHome)
-            ServersUiController.setProcessedServerId(ServersUiController.defaultServerId)
+            var pagePath
+            if (PageController.isStartPageVisible()) {
+                tabBar.visible = false
+                pagePath = PageController.getPagePath(PageEnum.PageSetupWizardStart)
+            } else {
+                tabBar.visible = true
+                pagePath = PageController.getPagePath(PageEnum.PageHome)
+                ServersUiController.setProcessedServerId(ServersUiController.defaultServerId)
+            }
 
             tabBarStackView.push(pagePath, { "objectName" : pagePath })
-
-            if (!WarpController.hasConfig) {
-                WarpController.fetchNewConfig()
-            }
         }
 
         Keys.onPressed: function(event) {
@@ -362,9 +352,6 @@ PageType {
             Connections {
                 target: ServersModel
 
-                // WARP-only client: sharing is disabled, keep the tab hidden
-                enabled: false
-
                 function onModelReset() {
                     if (!SettingsController.isOnTv()) {
                         var hasServerWithWriteAccess = ServersUiController.hasServerWithWriteAccess()
@@ -374,9 +361,8 @@ PageType {
                 }
             }
 
-            // WARP-only client: sharing is disabled
-            visible: false
-            width: 0
+            visible: !SettingsController.isOnTv() && ServersUiController.hasServerWithWriteAccess()
+            width: !SettingsController.isOnTv() && ServersUiController.hasServerWithWriteAccess() ? undefined : 0
 
             isSelected: tabBar.currentIndex === 1
             image: "qrc:/images/controls/share-2.svg"
@@ -407,10 +393,6 @@ PageType {
         TabImageButtonType {
             id: plusTabButton
             objectName: "plusTabButton"
-
-            // WARP-only client: adding servers/configs is disabled
-            visible: false
-            width: 0
 
             isSelected: tabBar.currentIndex === 3
             image: "qrc:/images/controls/plus.svg"

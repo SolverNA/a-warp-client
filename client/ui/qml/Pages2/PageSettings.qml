@@ -102,7 +102,6 @@ PageType {
     }
 
     property list<QtObject> settingsEntries: [
-        warpConfig,
         servers,
         connection,
         application,
@@ -113,23 +112,11 @@ PageType {
     ]
 
     QtObject {
-        id: warpConfig
-
-        property string title: qsTr("Настройки конфига")
-        readonly property string leftImagePath: "qrc:/images/controls/file-cog-2.svg"
-        property bool isVisible: true
-        readonly property var clickedHandler: function() {
-            PageController.goToPage(PageEnum.PageWarpConfigSettings)
-        }
-    }
-
-    QtObject {
         id: servers
 
         property string title: qsTr("Servers")
         readonly property string leftImagePath: "qrc:/images/controls/server.svg"
-        // WARP-only client: server management is hidden
-        property bool isVisible: false
+        property bool isVisible: true
         readonly property var clickedHandler: function() {
             PageController.goToPage(PageEnum.PageSettingsServersList)
         }
@@ -178,8 +165,7 @@ PageType {
 
         property string title: qsTr("Backup")
         readonly property string leftImagePath: "qrc:/images/controls/save.svg"
-        // WARP-only client: backup restore would allow importing arbitrary server configs
-        property bool isVisible: false
+        property bool isVisible: true
         readonly property var clickedHandler: function() {
             PageController.goToPage(PageEnum.PageSettingsBackup)
         }

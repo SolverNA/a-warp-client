@@ -126,9 +126,9 @@ void Autostart::setAutostart(bool autostart) {
             stream << "[Desktop Entry]" << Qt::endl;
             stream << "Exec=" << appPath() << Qt::endl;
             stream << "Type=Application" << Qt::endl;
-            stream << "Name=AmneziaVPN" << Qt::endl;
+            stream << "Name=AWARP" << Qt::endl;
             stream << "Comment=Client of your self-hosted VPN" << Qt::endl;
-            stream << "Icon=/usr/share/pixmaps/AmneziaVPN.png" << Qt::endl;
+            stream << "Icon=/usr/share/pixmaps/AWARP.png" << Qt::endl;
             stream << "Categories=Network;Qt;Security;" << Qt::endl;
             stream << "Terminal=false" << Qt::endl;
         }

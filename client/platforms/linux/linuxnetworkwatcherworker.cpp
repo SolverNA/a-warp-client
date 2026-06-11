@@ -143,6 +143,15 @@ void LinuxNetworkWatcherWorker::propertyChanged(QString interface,
                                                 QStringList list) {
   Q_UNUSED(list);
 
+  // AWARP-BEGIN: игнорируем события статистики трафика NetworkManager.
+  // Сигнал PropertiesChanged для интерфейса *.Device.Statistics прилетает
+  // каждые ~5 сек (RxBytes/TxBytes) и не означает реальной смены сети.
+  // Реагировать на него нельзя — это провоцирует лишний reconnect туннеля.
+  if (interface.endsWith(QLatin1String(".Device.Statistics"))) {
+    return;
+  }
+  // AWARP-END
+
   logger.debug() << "Properties changed for interface" << interface;
 
   if (!properties.contains("ActiveAccessPoint")) {

@@ -128,6 +128,55 @@ PageType {
             }
 
             BasicButtonType {
+                id: refreshWarpConfigButton
+                objectName: "refreshWarpConfigButton"
+
+                Layout.alignment: Qt.AlignHCenter
+                leftPadding: 16
+                rightPadding: 16
+
+                implicitHeight: 36
+
+                defaultColor: AmneziaStyle.color.transparent
+                hoveredColor: AmneziaStyle.color.translucentWhite
+                pressedColor: AmneziaStyle.color.sheerWhite
+                disabledColor: AmneziaStyle.color.mutedGray
+                textColor: AmneziaStyle.color.mutedGray
+                borderWidth: 0
+
+                buttonTextLabel.lineHeight: 20
+                buttonTextLabel.font.pixelSize: 14
+                buttonTextLabel.font.weight: 500
+
+                visible: WarpController.hasConfig
+                enabled: !WarpController.isBusy
+
+                text: WarpController.isBusy ? qsTr("Обновление конфига...") : qsTr("Обновить конфиг")
+
+                leftImageSource: WarpController.isBusy ? "" : "qrc:/images/controls/refresh-cw.svg"
+                leftImageColor: AmneziaStyle.color.mutedGray
+
+                Keys.onEnterPressed: this.clicked()
+                Keys.onReturnPressed: this.clicked()
+
+                onClicked: {
+                    if (ConnectionController.isConnected || ConnectionController.isConnectionInProgress) {
+                        PageController.showNotificationMessage(qsTr("Отключитесь от VPN перед обновлением конфига"))
+                        return
+                    }
+                    WarpController.refreshConfig()
+                }
+
+                Connections {
+                    target: WarpController
+
+                    function onConfigUpdated() {
+                        PageController.showNotificationMessage(qsTr("Конфиг WARP обновлён"))
+                    }
+                }
+            }
+
+            BasicButtonType {
                 id: splitTunnelingButton
                 objectName: "splitTunnelingButton"
 

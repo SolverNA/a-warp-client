@@ -150,10 +150,11 @@ PageType {
         }
 
         function onNoInstalledContainers() {
-            PageController.setTriggeredByConnectButton(true)
-
-            ServersUiController.setProcessedServerId(ServersUiController.defaultServerId)
-            PageController.goToPage(PageEnum.PageSetupWizardEasy)
+            // WARP-only client: instead of the setup wizard, re-request the WARP config
+            PageController.showNotificationMessage(qsTr("Конфиг WARP ещё не получен, запрашиваю заново..."))
+            if (!WarpController.isBusy) {
+                WarpController.fetchNewConfig()
+            }
         }
     }
 
@@ -361,6 +362,9 @@ PageType {
             Connections {
                 target: ServersModel
 
+                // WARP-only client: sharing is disabled, keep the tab hidden
+                enabled: false
+
                 function onModelReset() {
                     if (!SettingsController.isOnTv()) {
                         var hasServerWithWriteAccess = ServersUiController.hasServerWithWriteAccess()
@@ -370,8 +374,9 @@ PageType {
                 }
             }
 
-            visible: !SettingsController.isOnTv() && ServersUiController.hasServerWithWriteAccess()
-            width: !SettingsController.isOnTv() && ServersUiController.hasServerWithWriteAccess() ? undefined : 0
+            // WARP-only client: sharing is disabled
+            visible: false
+            width: 0
 
             isSelected: tabBar.currentIndex === 1
             image: "qrc:/images/controls/share-2.svg"
@@ -402,6 +407,10 @@ PageType {
         TabImageButtonType {
             id: plusTabButton
             objectName: "plusTabButton"
+
+            // WARP-only client: adding servers/configs is disabled
+            visible: false
+            width: 0
 
             isSelected: tabBar.currentIndex === 3
             image: "qrc:/images/controls/plus.svg"

@@ -128,7 +128,8 @@ PageType {
 
         property string title: qsTr("Servers")
         readonly property string leftImagePath: "qrc:/images/controls/server.svg"
-        property bool isVisible: true
+        // WARP-only client: server management is hidden
+        property bool isVisible: false
         readonly property var clickedHandler: function() {
             PageController.goToPage(PageEnum.PageSettingsServersList)
         }
@@ -177,7 +178,8 @@ PageType {
 
         property string title: qsTr("Backup")
         readonly property string leftImagePath: "qrc:/images/controls/save.svg"
-        property bool isVisible: true
+        // WARP-only client: backup restore would allow importing arbitrary server configs
+        property bool isVisible: false
         readonly property var clickedHandler: function() {
             PageController.goToPage(PageEnum.PageSettingsBackup)
         }

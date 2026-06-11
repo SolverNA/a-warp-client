@@ -428,7 +428,8 @@ PageType {
                     Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
                     spacing: 8
 
-                    visible: !ServersUiController.isDefaultServerFromApi
+                    // WARP-only client: protocol selection/installation is hidden
+                    visible: false
 
                     DropDownType {
                         id: containersDropDown

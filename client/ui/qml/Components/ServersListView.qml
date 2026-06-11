@@ -97,6 +97,9 @@ ListViewType {
                     id: serverInfoButton
                     objectName: "serverInfoButton"
 
+                    // WARP-only client: server management page is hidden
+                    visible: false
+
                     image: "qrc:/images/controls/settings.svg"
                     imageColor: AmneziaStyle.color.paleGray
 

@@ -50,6 +50,43 @@ namespace
         const QRegularExpression lineRegExp(QStringLiteral("^%1 = .*$").arg(key), QRegularExpression::MultilineOption);
         configText.replace(lineRegExp, QStringLiteral("%1 = %2").arg(key, value));
     }
+
+    QStringList splitCommaList(const QString &value)
+    {
+        QStringList result;
+        const QStringList parts = value.split(',', Qt::SkipEmptyParts);
+        for (const QString &part : parts) {
+            const QString trimmed = part.trimmed();
+            if (!trimmed.isEmpty()) {
+                result << trimmed;
+            }
+        }
+        return result;
+    }
+
+    // Keys of the QVariantMap exchanged with the QML config settings page
+    namespace fieldKey
+    {
+        constexpr QLatin1String junkPacketCount("junkPacketCount");
+        constexpr QLatin1String junkPacketMinSize("junkPacketMinSize");
+        constexpr QLatin1String junkPacketMaxSize("junkPacketMaxSize");
+        constexpr QLatin1String initPacketJunkSize("initPacketJunkSize");
+        constexpr QLatin1String responsePacketJunkSize("responsePacketJunkSize");
+        constexpr QLatin1String initPacketMagicHeader("initPacketMagicHeader");
+        constexpr QLatin1String responsePacketMagicHeader("responsePacketMagicHeader");
+        constexpr QLatin1String underloadPacketMagicHeader("underloadPacketMagicHeader");
+        constexpr QLatin1String transportPacketMagicHeader("transportPacketMagicHeader");
+        constexpr QLatin1String specialJunk1("specialJunk1");
+        constexpr QLatin1String mtu("mtu");
+        constexpr QLatin1String dns("dns");
+        constexpr QLatin1String allowedIps("allowedIps");
+        constexpr QLatin1String endpointHost("endpointHost");
+        constexpr QLatin1String endpointPort("endpointPort");
+        // read-only session fields
+        constexpr QLatin1String clientIpV4("clientIpV4");
+        constexpr QLatin1String clientIpV6("clientIpV6");
+        constexpr QLatin1String peerPublicKey("peerPublicKey");
+    } // namespace fieldKey
 } // namespace
 
 QString WarpController::WarpSession::addresses() const
@@ -230,7 +267,8 @@ void WarpController::importNewConfig(const WarpSession &session)
 {
     const QString previousServerId = findWarpServerId();
 
-    auto importResult = m_importController->extractConfigFromData(buildConfigText(session));
+    auto importResult = m_importController->extractConfigFromData(
+            buildConfigText(session.clientPrivateKey, session.addresses(), session.peerPublicKey, defaultParams()));
     if (importResult.errorCode != ErrorCode::NoError || importResult.config.isEmpty()) {
         fail(tr("Failed to process the generated WARP configuration"));
         return;
@@ -305,70 +343,259 @@ QString WarpController::getConfigJson() const
     return QString::fromUtf8(QJsonDocument(awgConfig->clientConfig->toJson()).toJson());
 }
 
-bool WarpController::saveConfig(const QString &configJson)
+QVariantMap WarpController::getConfigFields() const
 {
     const QString serverId = findWarpServerId();
     if (serverId.isEmpty()) {
-        return false;
+        return {};
     }
 
-    const QJsonObject clientConfigJson = QJsonDocument::fromJson(configJson.toUtf8()).object();
-    if (clientConfigJson.isEmpty()) {
-        emit errorOccurred(tr("Invalid WARP configuration format"));
+    const auto serverConfig = m_serversRepository->nativeConfig(serverId);
+    if (!serverConfig.has_value()) {
+        return {};
+    }
+
+    const ContainerConfig containerConfig = serverConfig->containerConfig(serverConfig->defaultContainer);
+    const auto *awgConfig = containerConfig.getAwgProtocolConfig();
+    if (!awgConfig || !awgConfig->hasClientConfig()) {
+        return {};
+    }
+
+    const AwgClientConfig &clientConfig = awgConfig->clientConfig.value();
+
+    QVariantMap fields;
+    fields[fieldKey::junkPacketCount] = clientConfig.junkPacketCount;
+    fields[fieldKey::junkPacketMinSize] = clientConfig.junkPacketMinSize;
+    fields[fieldKey::junkPacketMaxSize] = clientConfig.junkPacketMaxSize;
+    fields[fieldKey::initPacketJunkSize] = clientConfig.initPacketJunkSize;
+    fields[fieldKey::responsePacketJunkSize] = clientConfig.responsePacketJunkSize;
+    fields[fieldKey::initPacketMagicHeader] = clientConfig.initPacketMagicHeader;
+    fields[fieldKey::responsePacketMagicHeader] = clientConfig.responsePacketMagicHeader;
+    fields[fieldKey::underloadPacketMagicHeader] = clientConfig.underloadPacketMagicHeader;
+    fields[fieldKey::transportPacketMagicHeader] = clientConfig.transportPacketMagicHeader;
+    fields[fieldKey::specialJunk1] = clientConfig.specialJunk1;
+    fields[fieldKey::mtu] = clientConfig.mtu;
+
+    // DNS is stored as a line of the raw .conf text; the first two entries are duplicated
+    // at the server level (dns1/dns2) and are used at connection time
+    QString dns;
+    const QRegularExpression dnsLineRegExp(QStringLiteral("^DNS = (.*)$"), QRegularExpression::MultilineOption);
+    const QRegularExpressionMatch dnsMatch = dnsLineRegExp.match(clientConfig.nativeConfig);
+    if (dnsMatch.hasMatch()) {
+        dns = dnsMatch.captured(1).trimmed();
+    }
+    if (dns.isEmpty()) {
+        QStringList dnsParts;
+        if (!serverConfig->dns1.isEmpty()) {
+            dnsParts << serverConfig->dns1;
+        }
+        if (!serverConfig->dns2.isEmpty()) {
+            dnsParts << serverConfig->dns2;
+        }
+        dns = dnsParts.join(", ");
+    }
+    fields[fieldKey::dns] = dns;
+
+    fields[fieldKey::allowedIps] = clientConfig.allowedIps.join(", ");
+    fields[fieldKey::endpointHost] = clientConfig.hostName;
+    fields[fieldKey::endpointPort] =
+            clientConfig.port > 0 ? QString::number(clientConfig.port) : QString(protocols::warp::endpointPort);
+
+    // Read-only Cloudflare session fields
+    QString clientIpV4;
+    QString clientIpV6;
+    const QStringList addresses = splitCommaList(clientConfig.clientIp);
+    for (const QString &address : addresses) {
+        if (address.contains(':')) {
+            clientIpV6 = address;
+        } else {
+            clientIpV4 = address;
+        }
+    }
+    fields[fieldKey::clientIpV4] = clientIpV4;
+    fields[fieldKey::clientIpV6] = clientIpV6;
+    fields[fieldKey::peerPublicKey] = clientConfig.serverPublicKey;
+
+    return fields;
+}
+
+QVariantMap WarpController::getDefaultConfigFields() const
+{
+    const WarpParams params = defaultParams();
+
+    QVariantMap fields;
+    fields[fieldKey::junkPacketCount] = params.junkPacketCount;
+    fields[fieldKey::junkPacketMinSize] = params.junkPacketMinSize;
+    fields[fieldKey::junkPacketMaxSize] = params.junkPacketMaxSize;
+    fields[fieldKey::initPacketJunkSize] = params.initPacketJunkSize;
+    fields[fieldKey::responsePacketJunkSize] = params.responsePacketJunkSize;
+    fields[fieldKey::initPacketMagicHeader] = params.initPacketMagicHeader;
+    fields[fieldKey::responsePacketMagicHeader] = params.responsePacketMagicHeader;
+    fields[fieldKey::underloadPacketMagicHeader] = params.underloadPacketMagicHeader;
+    fields[fieldKey::transportPacketMagicHeader] = params.transportPacketMagicHeader;
+    fields[fieldKey::specialJunk1] = params.specialJunk1;
+    fields[fieldKey::mtu] = params.mtu;
+    fields[fieldKey::dns] = params.dns;
+    fields[fieldKey::allowedIps] = params.allowedIps;
+    fields[fieldKey::endpointHost] = params.endpointHost;
+    fields[fieldKey::endpointPort] = params.endpointPort;
+    return fields;
+}
+
+bool WarpController::saveConfig(const QVariantMap &fields)
+{
+    const QString serverId = findWarpServerId();
+    if (serverId.isEmpty()) {
+        emit errorOccurred(tr("Сохранённый WARP-конфиг не найден"));
         return false;
     }
 
     auto serverConfig = m_serversRepository->nativeConfig(serverId);
     if (!serverConfig.has_value()) {
+        emit errorOccurred(tr("Не удалось прочитать сохранённый WARP-конфиг"));
         return false;
     }
 
     const DockerContainer container = serverConfig->defaultContainer;
     ContainerConfig containerConfig = serverConfig->containerConfig(container);
     AwgProtocolConfig *awgConfig = containerConfig.getAwgProtocolConfig();
-    if (!awgConfig) {
+    if (!awgConfig || !awgConfig->hasClientConfig()) {
+        emit errorOccurred(tr("Не удалось прочитать сохранённый WARP-конфиг"));
         return false;
     }
 
-    const AwgClientConfig clientConfig = AwgClientConfig::fromJson(clientConfigJson);
-    awgConfig->setClientConfig(clientConfig);
-    if (clientConfig.port > 0) {
-        awgConfig->serverConfig.port = QString::number(clientConfig.port);
-    }
+    WarpParams params = defaultParams();
+    auto takeField = [&fields](const QLatin1String &key, QString &target) {
+        if (fields.contains(key)) {
+            target = fields.value(key).toString().trimmed();
+        }
+    };
+    takeField(fieldKey::junkPacketCount, params.junkPacketCount);
+    takeField(fieldKey::junkPacketMinSize, params.junkPacketMinSize);
+    takeField(fieldKey::junkPacketMaxSize, params.junkPacketMaxSize);
+    takeField(fieldKey::initPacketJunkSize, params.initPacketJunkSize);
+    takeField(fieldKey::responsePacketJunkSize, params.responsePacketJunkSize);
+    takeField(fieldKey::initPacketMagicHeader, params.initPacketMagicHeader);
+    takeField(fieldKey::responsePacketMagicHeader, params.responsePacketMagicHeader);
+    takeField(fieldKey::underloadPacketMagicHeader, params.underloadPacketMagicHeader);
+    takeField(fieldKey::transportPacketMagicHeader, params.transportPacketMagicHeader);
+    takeField(fieldKey::specialJunk1, params.specialJunk1);
+    takeField(fieldKey::mtu, params.mtu);
+    takeField(fieldKey::dns, params.dns);
+    takeField(fieldKey::allowedIps, params.allowedIps);
+    takeField(fieldKey::endpointHost, params.endpointHost);
+    takeField(fieldKey::endpointPort, params.endpointPort);
 
-    if (!clientConfig.hostName.isEmpty()) {
-        serverConfig->hostName = clientConfig.hostName;
+    const int endpointPort = params.endpointPort.toInt();
+    if (params.endpointHost.isEmpty() || endpointPort <= 0 || endpointPort > 65535) {
+        emit errorOccurred(tr("Некорректный Endpoint"));
+        return false;
     }
+    if (params.mtu.toInt() < 576) {
+        emit errorOccurred(tr("Некорректное значение MTU"));
+        return false;
+    }
+    const QStringList allowedIpsList = splitCommaList(params.allowedIps);
+    if (allowedIpsList.isEmpty()) {
+        emit errorOccurred(tr("AllowedIPs не может быть пустым"));
+        return false;
+    }
+    params.allowedIps = allowedIpsList.join(", ");
+    params.dns = splitCommaList(params.dns).join(", ");
+
+    // Replace only the user parameters, keeping the Cloudflare session fields intact
+    AwgClientConfig clientConfig = awgConfig->clientConfig.value();
+    clientConfig.junkPacketCount = params.junkPacketCount;
+    clientConfig.junkPacketMinSize = params.junkPacketMinSize;
+    clientConfig.junkPacketMaxSize = params.junkPacketMaxSize;
+    clientConfig.initPacketJunkSize = params.initPacketJunkSize;
+    clientConfig.responsePacketJunkSize = params.responsePacketJunkSize;
+    clientConfig.initPacketMagicHeader = params.initPacketMagicHeader;
+    clientConfig.responsePacketMagicHeader = params.responsePacketMagicHeader;
+    clientConfig.underloadPacketMagicHeader = params.underloadPacketMagicHeader;
+    clientConfig.transportPacketMagicHeader = params.transportPacketMagicHeader;
+    clientConfig.specialJunk1 = params.specialJunk1;
+    clientConfig.mtu = params.mtu;
+    clientConfig.hostName = params.endpointHost;
+    clientConfig.port = endpointPort;
+    clientConfig.allowedIps = allowedIpsList;
+    clientConfig.nativeConfig =
+            buildConfigText(clientConfig.clientPrivateKey, clientConfig.clientIp, clientConfig.serverPublicKey, params);
+
+    awgConfig->setClientConfig(clientConfig);
+    awgConfig->serverConfig.port = params.endpointPort;
+
+    serverConfig->hostName = params.endpointHost;
+
+    // Server-level dns1/dns2 are used at connection time and accept IPv4 only
+    // (as in ImportController::extractWireGuardConfig)
+    QStringList dnsV4List;
+    const QStringList dnsList = splitCommaList(params.dns);
+    for (const QString &dnsEntry : dnsList) {
+        if (!dnsEntry.contains(':')) {
+            dnsV4List << dnsEntry;
+        }
+    }
+    serverConfig->dns1 = dnsV4List.value(0);
+    serverConfig->dns2 = dnsV4List.value(1);
+
     serverConfig->updateContainerConfig(container, containerConfig);
     m_serversRepository->editServer(serverId, serverConfig->toJson(), serverConfigUtils::ConfigType::Native);
 
-    emit configUpdated();
+    logger.info() << "WARP config settings saved";
+    emit configSaved();
     return true;
 }
 
-QString WarpController::buildConfigText(const WarpSession &session) const
+WarpController::WarpParams WarpController::defaultParams()
+{
+    WarpParams params;
+    params.junkPacketCount = protocols::warp::defaultJunkPacketCount;
+    params.junkPacketMinSize = protocols::warp::defaultJunkPacketMinSize;
+    params.junkPacketMaxSize = protocols::warp::defaultJunkPacketMaxSize;
+    params.initPacketJunkSize = protocols::warp::defaultInitPacketJunkSize;
+    params.responsePacketJunkSize = protocols::warp::defaultResponsePacketJunkSize;
+    params.initPacketMagicHeader = protocols::warp::defaultInitPacketMagicHeader;
+    params.responsePacketMagicHeader = protocols::warp::defaultResponsePacketMagicHeader;
+    params.underloadPacketMagicHeader = protocols::warp::defaultUnderloadPacketMagicHeader;
+    params.transportPacketMagicHeader = protocols::warp::defaultTransportPacketMagicHeader;
+    params.specialJunk1 = protocols::warp::defaultSpecialJunk1;
+    params.mtu = protocols::warp::defaultMtu;
+    params.dns = protocols::warp::defaultDns;
+    params.allowedIps = protocols::warp::defaultAllowedIps;
+    params.endpointHost = protocols::warp::endpointHost;
+    params.endpointPort = protocols::warp::endpointPort;
+    return params;
+}
+
+QString WarpController::buildConfigText(const QString &privateKey, const QString &address, const QString &peerPublicKey,
+                                        const WarpParams &params)
 {
     QStringList lines;
     lines << QStringLiteral("[Interface]");
-    lines << QStringLiteral("PrivateKey = %1").arg(session.clientPrivateKey);
-    lines << QStringLiteral("Address = %1").arg(session.addresses());
-    lines << QStringLiteral("DNS = %1").arg(protocols::warp::defaultDns);
-    lines << QStringLiteral("MTU = %1").arg(protocols::warp::defaultMtu);
-    lines << QStringLiteral("Jc = %1").arg(protocols::warp::defaultJunkPacketCount);
-    lines << QStringLiteral("Jmin = %1").arg(protocols::warp::defaultJunkPacketMinSize);
-    lines << QStringLiteral("Jmax = %1").arg(protocols::warp::defaultJunkPacketMaxSize);
-    lines << QStringLiteral("S1 = %1").arg(protocols::warp::defaultInitPacketJunkSize);
-    lines << QStringLiteral("S2 = %1").arg(protocols::warp::defaultResponsePacketJunkSize);
-    lines << QStringLiteral("H1 = %1").arg(protocols::warp::defaultInitPacketMagicHeader);
-    lines << QStringLiteral("H2 = %1").arg(protocols::warp::defaultResponsePacketMagicHeader);
-    lines << QStringLiteral("H3 = %1").arg(protocols::warp::defaultUnderloadPacketMagicHeader);
-    lines << QStringLiteral("H4 = %1").arg(protocols::warp::defaultTransportPacketMagicHeader);
-    lines << QStringLiteral("I1 = %1").arg(protocols::warp::defaultSpecialJunk1);
+    lines << QStringLiteral("PrivateKey = %1").arg(privateKey);
+    lines << QStringLiteral("Address = %1").arg(address);
+    if (!params.dns.isEmpty()) {
+        lines << QStringLiteral("DNS = %1").arg(params.dns);
+    }
+    lines << QStringLiteral("MTU = %1").arg(params.mtu);
+    lines << QStringLiteral("Jc = %1").arg(params.junkPacketCount);
+    lines << QStringLiteral("Jmin = %1").arg(params.junkPacketMinSize);
+    lines << QStringLiteral("Jmax = %1").arg(params.junkPacketMaxSize);
+    lines << QStringLiteral("S1 = %1").arg(params.initPacketJunkSize);
+    lines << QStringLiteral("S2 = %1").arg(params.responsePacketJunkSize);
+    lines << QStringLiteral("H1 = %1").arg(params.initPacketMagicHeader);
+    lines << QStringLiteral("H2 = %1").arg(params.responsePacketMagicHeader);
+    lines << QStringLiteral("H3 = %1").arg(params.underloadPacketMagicHeader);
+    lines << QStringLiteral("H4 = %1").arg(params.transportPacketMagicHeader);
+    if (!params.specialJunk1.isEmpty()) {
+        lines << QStringLiteral("I1 = %1").arg(params.specialJunk1);
+    }
     lines << QString();
     lines << QStringLiteral("[Peer]");
-    lines << QStringLiteral("PublicKey = %1").arg(session.peerPublicKey);
-    lines << QStringLiteral("AllowedIPs = %1").arg(protocols::warp::defaultAllowedIps);
-    lines << QStringLiteral("Endpoint = %1:%2").arg(protocols::warp::endpointHost, protocols::warp::endpointPort);
+    lines << QStringLiteral("PublicKey = %1").arg(peerPublicKey);
+    lines << QStringLiteral("AllowedIPs = %1").arg(params.allowedIps);
+    lines << QStringLiteral("Endpoint = %1:%2").arg(params.endpointHost, params.endpointPort);
     return lines.join("\n");
 }
 

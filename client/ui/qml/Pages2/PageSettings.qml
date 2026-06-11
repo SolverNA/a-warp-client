@@ -102,6 +102,7 @@ PageType {
     }
 
     property list<QtObject> settingsEntries: [
+        warpConfig,
         servers,
         connection,
         application,
@@ -110,6 +111,17 @@ PageType {
         about,
         devConsole
     ]
+
+    QtObject {
+        id: warpConfig
+
+        property string title: qsTr("Настройки конфига")
+        readonly property string leftImagePath: "qrc:/images/controls/file-cog-2.svg"
+        property bool isVisible: true
+        readonly property var clickedHandler: function() {
+            PageController.goToPage(PageEnum.PageWarpConfigSettings)
+        }
+    }
 
     QtObject {
         id: servers

@@ -6,7 +6,7 @@
 
 #include "../client/core/utils/utilities.h"
 
-#define IPC_SERVICE_URL "local:AmneziaVpnIpcInterface"
+#define IPC_SERVICE_URL "local:AWarpIpcInterface"
 
 namespace amnezia {
 

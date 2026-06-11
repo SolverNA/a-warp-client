@@ -98,7 +98,7 @@ void AmneziaApplication::init()
 {
     m_engine = new QQmlApplicationEngine;
 
-    const QUrl url(QStringLiteral("qrc:/ui/qml/main2.qml"));
+    const QUrl url(QStringLiteral("qrc:/ui/qml/Awarp/AwarpMain.qml")); // AWARP
     QObject::connect(
         m_engine, &QQmlApplicationEngine::objectCreated, this,
         [this, url](QObject *obj, const QUrl &objUrl) {

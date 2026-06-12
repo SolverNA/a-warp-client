@@ -39,6 +39,14 @@ public:
     Q_INVOKABLE QVariantMap getDefaultConfigFields() const;
     Q_INVOKABLE bool saveConfig(const QVariantMap &fields);
 
+    // AWARP relays: apply a relay endpoint to the saved WARP config and switch
+    // to manual endpoint mode (the scanner never overwrites a manual endpoint).
+    Q_INVOKABLE bool applyRelay(const QString &host, int port);
+    // Return to automatic endpoint mode; the next refresh/scan re-picks the endpoint.
+    Q_INVOKABLE void setEndpointAuto(bool autoMode);
+    // Active endpoint of the saved WARP config as "host:port" ("" if unknown).
+    Q_INVOKABLE QString currentEndpoint() const;
+
 public slots:
     void fetchNewConfig();
     void refreshConfig();

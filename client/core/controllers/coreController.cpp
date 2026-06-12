@@ -160,6 +160,7 @@ void CoreController::initCoreControllers()
     m_exportController = new ExportController(m_serversRepository, m_appSettingsRepository, this);
     m_importCoreController = new ImportController(m_serversRepository, m_appSettingsRepository, this);
     m_warpController = new WarpController(m_serversRepository, m_appSettingsRepository, m_importCoreController, this);
+    m_relaysController = new RelaysController(m_appSettingsRepository, m_warpController, this);
     m_connectionController = new ConnectionController(m_serversRepository, m_appSettingsRepository, m_vpnConnection.get(), this);
     m_settingsController = new SettingsController(m_serversRepository, m_appSettingsRepository, this);
 }
@@ -233,6 +234,7 @@ void CoreController::initControllers()
     setQmlContextProperty("UpdateController", m_updateUiController);
 
     setQmlContextProperty("WarpController", m_warpController);
+    setQmlContextProperty("RelaysController", m_relaysController);
 }
 
 void CoreController::initAndroidController()

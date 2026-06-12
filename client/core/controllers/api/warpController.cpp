@@ -823,6 +823,90 @@ void WarpController::applyScannedEndpoint(const QString &serverId, const QString
     logger.info() << "WARP endpoint set to" << ip << ":" << port << "by scanner";
 }
 
+bool WarpController::applyRelay(const QString &host, int port)
+{
+    if (host.isEmpty() || port <= 0 || port > 65535) {
+        emit errorOccurred(tr("Некорректный релей"));
+        return false;
+    }
+
+    const QString serverId = findWarpServerId();
+    if (serverId.isEmpty()) {
+        emit errorOccurred(tr("Сохранённый WARP-конфиг не найден"));
+        return false;
+    }
+
+    auto serverConfig = m_serversRepository->nativeConfig(serverId);
+    if (!serverConfig.has_value()) {
+        emit errorOccurred(tr("Не удалось прочитать сохранённый WARP-конфиг"));
+        return false;
+    }
+
+    const DockerContainer container = serverConfig->defaultContainer;
+    ContainerConfig containerConfig = serverConfig->containerConfig(container);
+    AwgProtocolConfig *awgConfig = containerConfig.getAwgProtocolConfig();
+    if (!awgConfig || !awgConfig->hasClientConfig()) {
+        emit errorOccurred(tr("Не удалось прочитать сохранённый WARP-конфиг"));
+        return false;
+    }
+
+    // Update the endpoint in every place it is stored (mirrors applyScannedEndpoint)
+    AwgClientConfig clientConfig = awgConfig->clientConfig.value();
+    replaceConfigTextValue(clientConfig.nativeConfig, protocols::wireguard::Endpoint,
+                           QStringLiteral("%1:%2").arg(host).arg(port));
+    clientConfig.hostName = host;
+    clientConfig.port = port;
+
+    awgConfig->setClientConfig(clientConfig);
+    awgConfig->serverConfig.port = QString::number(port);
+    serverConfig->hostName = host;
+
+    serverConfig->updateContainerConfig(container, containerConfig);
+    m_serversRepository->editServer(serverId, serverConfig->toJson(), serverConfigUtils::ConfigType::Native);
+
+    // Switch to manual endpoint mode so the scanner never overwrites the relay.
+    if (m_appSettingsRepository->isWarpEndpointAuto()) {
+        m_appSettingsRepository->setWarpEndpointAuto(false);
+        emit endpointAutoChanged(false);
+    }
+
+    logger.info() << "WARP endpoint set to relay" << host << ":" << port;
+    emit configSaved();
+    return true;
+}
+
+void WarpController::setEndpointAuto(bool autoMode)
+{
+    if (m_appSettingsRepository->isWarpEndpointAuto() == autoMode) {
+        return;
+    }
+    m_appSettingsRepository->setWarpEndpointAuto(autoMode);
+    emit endpointAutoChanged(autoMode);
+    // In auto mode the next refresh/scan re-picks the best endpoint.
+}
+
+QString WarpController::currentEndpoint() const
+{
+    const QString serverId = findWarpServerId();
+    if (serverId.isEmpty()) {
+        return QString();
+    }
+    const auto serverConfig = m_serversRepository->nativeConfig(serverId);
+    if (!serverConfig.has_value()) {
+        return QString();
+    }
+    const ContainerConfig containerConfig = serverConfig->containerConfig(serverConfig->defaultContainer);
+    const auto *awgConfig = containerConfig.getAwgProtocolConfig();
+    if (!awgConfig || !awgConfig->hasClientConfig()) {
+        return QString();
+    }
+    const auto &cc = awgConfig->clientConfig.value();
+    if (cc.hostName.isEmpty()) {
+        return QString();
+    }
+    return QStringLiteral("%1:%2").arg(cc.hostName).arg(cc.port);
+}
+
 void WarpController::startLatencyMonitor()
 {
     probeLatencyOnce();

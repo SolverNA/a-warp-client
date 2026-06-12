@@ -39,6 +39,7 @@
 #include "core/controllers/api/subscriptionController.h"
 #include "core/controllers/api/newsController.h"
 #include "core/controllers/api/warpController.h"
+#include "core/controllers/api/relaysController.h"
 #include "core/controllers/selfhosted/installController.h"
 #include "core/controllers/settingsController.h"
 #include "core/controllers/connectionController.h"
@@ -191,6 +192,7 @@ private:
     NewsController* m_newsController;
     UpdateController* m_updateController;
     WarpController* m_warpController;
+    RelaysController* m_relaysController;
     InstallController* m_installController;
     ExportController* m_exportController;
     ConnectionController* m_connectionController;

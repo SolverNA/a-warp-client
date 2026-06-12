@@ -5,6 +5,7 @@
 #include <QElapsedTimer>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QNetworkInterface>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QRegularExpression>
@@ -905,6 +906,68 @@ QString WarpController::currentEndpoint() const
         return QString();
     }
     return QStringLiteral("%1:%2").arg(cc.hostName).arg(cc.port);
+}
+
+QStringList WarpController::detectActiveVpns() const
+{
+    // Patterns of interface names that typically belong to a VPN tunnel.
+    static const QStringList kVpnPrefixes = {
+        QStringLiteral("amn"),     // AmneziaVPN / AmneziaWG
+        QStringLiteral("awarp"),   // our own future tunnel (defensive)
+        QStringLiteral("tun"),     // OpenVPN and many others
+        QStringLiteral("wg"),      // WireGuard
+        QStringLiteral("utun"),    // macOS tunnels
+        QStringLiteral("ppp"),     // PPTP/L2TP
+        QStringLiteral("nordlynx"),
+        QStringLiteral("proton"),
+        QStringLiteral("wt"),      // various WireGuard-based clients
+    };
+
+    QStringList result;
+    const auto interfaces = QNetworkInterface::allInterfaces();
+    for (const QNetworkInterface &iface : interfaces) {
+        const auto flags = iface.flags();
+        // Only consider interfaces that are actually up and routable.
+        if (!flags.testFlag(QNetworkInterface::IsUp)
+            || !flags.testFlag(QNetworkInterface::IsRunning)) {
+            continue;
+        }
+        if (flags.testFlag(QNetworkInterface::IsLoopBack)) {
+            continue;
+        }
+
+        const QString name = iface.name();
+        if (name.isEmpty()) {
+            continue;
+        }
+
+        bool isVpn = false;
+        for (const QString &prefix : kVpnPrefixes) {
+            if (name.startsWith(prefix, Qt::CaseInsensitive)) {
+                isVpn = true;
+                break;
+            }
+        }
+        // Point-to-point non-loopback interfaces are almost always tunnels.
+        if (!isVpn && flags.testFlag(QNetworkInterface::IsPointToPoint)) {
+            isVpn = true;
+        }
+        if (!isVpn) {
+            continue;
+        }
+
+        // Build a human-readable label.
+        QString label;
+        if (name.startsWith(QStringLiteral("amn"), Qt::CaseInsensitive)) {
+            label = QStringLiteral("AmneziaVPN (%1)").arg(name);
+        } else {
+            label = name;
+        }
+        if (!result.contains(label)) {
+            result << label;
+        }
+    }
+    return result;
 }
 
 void WarpController::startLatencyMonitor()

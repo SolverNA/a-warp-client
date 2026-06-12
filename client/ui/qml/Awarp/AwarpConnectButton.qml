@@ -22,6 +22,11 @@ Button {
     property bool isConfigMissing: !WarpController.hasConfig
     property bool isConfigFetching: isConfigMissing && WarpController.isBusy
 
+    // AWARP: set once the user has been warned about a conflicting active VPN.
+    // A second click then proceeds with the connection anyway. Reset whenever
+    // the connection state changes so the warning is shown again next time.
+    property bool pendingVpnConfirm: false
+
     Keys.onTabPressed: {
         FocusController.nextKeyTabItem()
     }
@@ -64,6 +69,12 @@ Button {
 
         function onPreparingConfig() {
             PageController.showNotificationMessage(qsTr("Unable to disconnect during configuration preparation"))
+        }
+
+        // AWARP: reset the conflicting-VPN confirmation whenever the connection
+        // state changes, so the warning is shown again on the next attempt.
+        function onConnectionStateChanged() {
+            root.pendingVpnConfirm = false
         }
     }
 
@@ -200,6 +211,24 @@ Button {
             WarpController.fetchNewConfig()
             return
         }
+
+        // AWARP: before starting a new connection, warn about any conflicting
+        // active VPN tunnel (e.g. AmneziaVPN). Only gate when we are about to
+        // connect, not when the user is disconnecting an existing connection.
+        if (!ConnectionController.isConnected && !ConnectionController.isConnectionInProgress) {
+            if (!root.pendingVpnConfirm) {
+                var activeVpns = WarpController.detectActiveVpns()
+                if (activeVpns.length > 0) {
+                    root.pendingVpnConfirm = true
+                    PageController.showNotificationMessage(
+                        qsTr("Обнаружен активный VPN: %1. Отключите его или нажмите «Подключить» ещё раз, чтобы продолжить.")
+                            .arg(activeVpns.join(", ")))
+                    return
+                }
+            }
+        }
+        // Either no conflicting VPN, or the user confirmed by clicking again.
+        root.pendingVpnConfirm = false
         ConnectionController.connectButtonClicked()
     }
 

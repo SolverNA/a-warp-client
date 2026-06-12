@@ -47,6 +47,11 @@ public:
     // Active endpoint of the saved WARP config as "host:port" ("" if unknown).
     Q_INVOKABLE QString currentEndpoint() const;
 
+    // AWARP: detect already-active VPN tunnels (e.g. AmneziaVPN) before
+    // connecting, so the user can be warned about a conflicting VPN. Returns a
+    // list of human-readable interface descriptions; an empty list means clean.
+    Q_INVOKABLE QStringList detectActiveVpns() const;
+
 public slots:
     void fetchNewConfig();
     void refreshConfig();

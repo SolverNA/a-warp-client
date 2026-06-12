@@ -2,6 +2,7 @@
 #define WARPCONTROLLER_H
 
 #include <QJsonObject>
+#include <QNetworkRequest>
 #include <QObject>
 #include <QVariantMap>
 
@@ -114,6 +115,17 @@ private:
             const std::function<void(bool ok, const WarpSession &session, const QString &errorMessage)> &onDone);
     void sendRequestAsync(const QByteArray &verb, const QString &endpoint, const QJsonObject &body, const QString &bearerToken,
                           const std::function<void(bool ok, const QJsonObject &response, const QString &errorMessage)> &onDone);
+
+    // AWARP: force IPv4 for an outgoing HTTP request. Resolves the request URL's
+    // host asynchronously, and when an IPv4 (A) address exists rewrites the URL to
+    // connect by that IP while preserving the original hostname for the HTTP Host
+    // header and the TLS SNI / certificate verification (peerVerifyName). When no
+    // IPv4 address is available the request is sent unchanged (on the hostname).
+    // This works around hangs on networks where these domains resolve to IPv6 only
+    // but outbound IPv6 does not work (e.g. under an active VPN killswitch).
+    // The logTag is used only for log lines (e.g. "reg", "bootstrap").
+    void sendWithIPv4(QNetworkRequest request, const QString &logTag,
+                      const std::function<void(const QNetworkRequest &request)> &send);
 
     void importNewConfig(const WarpSession &session);
     void updateExistingConfig(const QString &serverId, const WarpSession &session);

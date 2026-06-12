@@ -3,6 +3,8 @@
 #include <QAbstractSocket>
 #include <QDateTime>
 #include <QElapsedTimer>
+#include <QHostAddress>
+#include <QHostInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QNetworkInterface>
@@ -316,9 +318,10 @@ void WarpController::registerAccountViaBootstrap(
     request.setRawHeader(AwarpBackendConfig::bootstrapSecretHeader().toUtf8(),
                          AwarpBackendConfig::bootstrapSecret().toUtf8());
 
-    QNetworkReply *reply = amnApp->networkManager()->get(request);
+    sendWithIPv4(request, QStringLiteral("bootstrap"), [this, onDone](const QNetworkRequest &request) {
+        QNetworkReply *reply = amnApp->networkManager()->get(request);
 
-    connect(reply, &QNetworkReply::finished, this, [reply, onDone]() {
+        connect(reply, &QNetworkReply::finished, this, [reply, onDone]() {
         reply->deleteLater();
 
         if (reply->error() != QNetworkReply::NoError) {
@@ -354,6 +357,56 @@ void WarpController::registerAccountViaBootstrap(
 
         logger.info() << "WarpController: конфиг получен через резервный сервис";
         onDone(true, session, QString());
+        });
+    });
+}
+
+void WarpController::sendWithIPv4(QNetworkRequest request, const QString &logTag,
+                                  const std::function<void(const QNetworkRequest &request)> &send)
+{
+    const QUrl url = request.url();
+    const QString host = url.host();
+
+    // If the URL host is already a literal IP address, there is nothing to resolve.
+    if (host.isEmpty() || !QHostAddress(host).isNull()) {
+        send(request);
+        return;
+    }
+
+    QHostInfo::lookupHost(host, this, [this, request, host, logTag, send](const QHostInfo &info) mutable {
+        QHostAddress ipv4;
+        if (info.error() == QHostInfo::NoError) {
+            for (const QHostAddress &address : info.addresses()) {
+                if (address.protocol() == QAbstractSocket::IPv4Protocol) {
+                    ipv4 = address;
+                    break;
+                }
+            }
+        }
+
+        if (ipv4.isNull()) {
+            // No A record (IPv6-only or lookup failed): send on the hostname as before.
+            logger.warning() << "WarpController:" << logTag
+                             << "— нет IPv4 (A) записи для" << host << ", отправляю по hostname";
+            send(request);
+            return;
+        }
+
+        // Connect by IPv4 while keeping the hostname for the HTTP Host header and
+        // the TLS SNI / certificate verification.
+        QUrl ipUrl = request.url();
+        ipUrl.setHost(ipv4.toString());
+        request.setUrl(ipUrl);
+        // Set the HTTP Host header explicitly (this Qt build has no HostHeader
+        // KnownHeaders enum) so the server routes by the original hostname even
+        // though we connect by IP.
+        request.setRawHeader("Host", host.toUtf8());
+        // Keep TLS SNI and certificate verification bound to the hostname.
+        request.setPeerVerifyName(host);
+
+        logger.info() << "WarpController:" << logTag << "via IPv4" << ipv4.toString()
+                      << "(host" << host << ")";
+        send(request);
     });
 }
 
@@ -371,25 +424,28 @@ void WarpController::sendRequestAsync(const QByteArray &verb, const QString &end
     }
 
     const QByteArray payload = QJsonDocument(body).toJson(QJsonDocument::Compact);
-    QNetworkReply *reply = amnApp->networkManager()->sendCustomRequest(request, verb, payload);
 
-    connect(reply, &QNetworkReply::finished, this, [reply, endpoint, onDone]() {
-        reply->deleteLater();
+    sendWithIPv4(request, QStringLiteral("reg"), [this, verb, payload, endpoint, onDone](const QNetworkRequest &request) {
+        QNetworkReply *reply = amnApp->networkManager()->sendCustomRequest(request, verb, payload);
 
-        if (reply->error() != QNetworkReply::NoError) {
-            logger.error() << "Request to" << endpoint << "failed:" << reply->errorString();
-            onDone(false, {}, reply->errorString());
-            return;
-        }
+        connect(reply, &QNetworkReply::finished, this, [reply, endpoint, onDone]() {
+            reply->deleteLater();
 
-        const QJsonObject response = QJsonDocument::fromJson(reply->readAll()).object();
-        if (response.isEmpty()) {
-            logger.error() << "Request to" << endpoint << "returned an invalid JSON response";
-            onDone(false, {}, tr("некорректный ответ сервера"));
-            return;
-        }
+            if (reply->error() != QNetworkReply::NoError) {
+                logger.error() << "Request to" << endpoint << "failed:" << reply->errorString();
+                onDone(false, {}, reply->errorString());
+                return;
+            }
 
-        onDone(true, response, QString());
+            const QJsonObject response = QJsonDocument::fromJson(reply->readAll()).object();
+            if (response.isEmpty()) {
+                logger.error() << "Request to" << endpoint << "returned an invalid JSON response";
+                onDone(false, {}, tr("некорректный ответ сервера"));
+                return;
+            }
+
+            onDone(true, response, QString());
+        });
     });
 }
 

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "bootstrap": {
+    "enabled": true,
+    "url": "https://YOUR-BOOTSTRAP.example/api/warp",
+    "apiSecretHeader": "X-API-Secret",
+    "apiSecret": "",
+    "timeoutMs": 7000
+  },
+  "relays": [
+    { "host": "162.159.192.1", "port": 500 },
+    { "host": "83.143.112.121", "port": 2408 }
+  ],
+  "updateUrl": ""
+}

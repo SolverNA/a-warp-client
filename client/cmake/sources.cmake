@@ -16,6 +16,7 @@ set(HEADERS ${HEADERS}
     ${CLIENT_ROOT_DIR}/core/utils/constants/apiKeys.h
     ${CLIENT_ROOT_DIR}/core/utils/constants/apiConstants.h
     ${CLIENT_ROOT_DIR}/core/utils/constants/warpConstants.h
+    ${CLIENT_ROOT_DIR}/core/utils/config/awarpBackendConfig.h # AWARP
     ${CLIENT_ROOT_DIR}/core/utils/errorStrings.h
     ${CLIENT_ROOT_DIR}/core/utils/selfhosted/scriptsRegistry.h
     ${CLIENT_ROOT_DIR}/core/utils/qrCodeUtils.h
@@ -128,6 +129,7 @@ set(SOURCES ${SOURCES}
     ${CLIENT_ROOT_DIR}/core/controllers/api/newsController.cpp
     ${CLIENT_ROOT_DIR}/core/controllers/api/warpController.cpp
     ${CLIENT_ROOT_DIR}/core/controllers/api/warpScanner.cpp
+    ${CLIENT_ROOT_DIR}/core/utils/config/awarpBackendConfig.cpp # AWARP
     ${CLIENT_ROOT_DIR}/core/controllers/updateController.cpp
     ${CLIENT_ROOT_DIR}/core/repositories/secureServersRepository.cpp
     ${CLIENT_ROOT_DIR}/core/repositories/secureAppSettingsRepository.cpp

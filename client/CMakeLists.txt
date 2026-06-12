@@ -62,12 +62,23 @@ if(WIN32 OR (APPLE AND NOT IOS AND NOT MACOS_NE) OR (LINUX AND NOT ANDROID))
     qt_add_repc_replicas(${PROJECT} ${CMAKE_CURRENT_LIST_DIR}/../ipc/ipc_process_interface.rep)
 endif()
 
+# AWARP: ensure the (gitignored) real backend config exists on a clean clone so
+# the qrc can embed it; fall back to the committed *.example.json placeholder.
+if(NOT EXISTS ${CMAKE_CURRENT_LIST_DIR}/core/utils/config/warp_bootstrap.json)
+    configure_file(
+        ${CMAKE_CURRENT_LIST_DIR}/core/utils/config/warp_bootstrap.example.json
+        ${CMAKE_CURRENT_LIST_DIR}/core/utils/config/warp_bootstrap.json
+        COPYONLY
+    )
+endif()
+
 qt6_add_resources(QRC ${QRC}
     ${CMAKE_CURRENT_LIST_DIR}/images/images.qrc
     ${CMAKE_CURRENT_LIST_DIR}/images/flagKit.qrc
     ${CMAKE_CURRENT_LIST_DIR}/client_scripts/clientScripts.qrc
     ${CMAKE_CURRENT_LIST_DIR}/ui/qml/qml.qrc
     ${CMAKE_CURRENT_LIST_DIR}/ui/qml/Awarp/awarp.qrc # AWARP
+    ${CMAKE_CURRENT_LIST_DIR}/core/utils/config/awarpBackend.qrc # AWARP
     ${CMAKE_CURRENT_LIST_DIR}/server_scripts/serverScripts.qrc
 )
 

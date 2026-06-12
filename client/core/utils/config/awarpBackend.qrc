@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/awarp">
+        <file>warp_bootstrap.json</file>
+    </qresource>
+</RCC>

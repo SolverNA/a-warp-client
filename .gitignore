@@ -1,3 +1,6 @@
+# AWARP backend secret (real bootstrap config — NEVER commit)
+client/core/utils/config/warp_bootstrap.json
+
 # User settings
 *.user
 macOSPackage/

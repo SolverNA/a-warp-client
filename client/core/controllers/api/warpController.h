@@ -95,6 +95,10 @@ private:
     static WarpParams defaultParams();
 
     void registerAccount(const std::function<void(bool ok, const WarpSession &session)> &onDone);
+    // AWARP: fallback path — fetch a ready WARP session from our own bootstrap
+    // service when the direct Cloudflare registration fails.
+    void registerAccountViaBootstrap(
+            const std::function<void(bool ok, const WarpSession &session, const QString &errorMessage)> &onDone);
     void sendRequestAsync(const QByteArray &verb, const QString &endpoint, const QJsonObject &body, const QString &bearerToken,
                           const std::function<void(bool ok, const QJsonObject &response, const QString &errorMessage)> &onDone);
 

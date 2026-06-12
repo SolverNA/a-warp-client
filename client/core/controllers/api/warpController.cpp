@@ -23,6 +23,7 @@
 #include "core/utils/constants/configKeys.h"
 #include "core/utils/constants/protocolConstants.h"
 #include "core/utils/constants/warpConstants.h"
+#include "core/utils/config/awarpBackendConfig.h" // AWARP
 #include "core/utils/serverConfigUtils.h"
 #include "warpScanner.h"
 
@@ -231,8 +232,16 @@ void WarpController::registerAccount(const std::function<void(bool ok, const War
     sendRequestAsync("POST", kRegEndpoint, regBody, QString(),
                      [this, keys, onDone](bool ok, const QJsonObject &response, const QString &errorMessage) {
         if (!ok) {
-            fail(tr("Не удалось зарегистрироваться в Cloudflare WARP: %1").arg(errorMessage));
-            onDone(false, {});
+            // AWARP: direct Cloudflare registration failed — try the bootstrap fallback.
+            logger.warning() << "WarpController: прямой запрос к Cloudflare не удался, пробую резервный сервис";
+            registerAccountViaBootstrap([this, onDone](bool bootstrapOk, const WarpSession &session, const QString &bootstrapError) {
+                if (bootstrapOk) {
+                    onDone(true, session);
+                    return;
+                }
+                fail(tr("Не удалось получить конфиг ни напрямую, ни через резервный сервис: %1").arg(bootstrapError));
+                onDone(false, {});
+            });
             return;
         }
 
@@ -251,8 +260,16 @@ void WarpController::registerAccount(const std::function<void(bool ok, const War
         sendRequestAsync("PATCH", QStringLiteral("%1/%2").arg(kRegEndpoint, accountId), patchBody, token,
                          [this, keys, onDone](bool ok, const QJsonObject &response, const QString &errorMessage) {
             if (!ok) {
-                fail(tr("Не удалось включить WARP для зарегистрированного аккаунта: %1").arg(errorMessage));
-                onDone(false, {});
+                // AWARP: enabling WARP failed — try the bootstrap fallback.
+                logger.warning() << "WarpController: прямой запрос к Cloudflare не удался, пробую резервный сервис";
+                registerAccountViaBootstrap([this, onDone](bool bootstrapOk, const WarpSession &session, const QString &bootstrapError) {
+                    if (bootstrapOk) {
+                        onDone(true, session);
+                        return;
+                    }
+                    fail(tr("Не удалось получить конфиг ни напрямую, ни через резервный сервис: %1").arg(bootstrapError));
+                    onDone(false, {});
+                });
                 return;
             }
 
@@ -275,6 +292,67 @@ void WarpController::registerAccount(const std::function<void(bool ok, const War
 
             onDone(true, session);
         });
+    });
+}
+
+void WarpController::registerAccountViaBootstrap(
+        const std::function<void(bool ok, const WarpSession &session, const QString &errorMessage)> &onDone)
+{
+    if (!AwarpBackendConfig::bootstrapEnabled()) {
+        onDone(false, {}, tr("резервный сервис отключён"));
+        return;
+    }
+
+    const QString url = AwarpBackendConfig::bootstrapUrl();
+    if (url.isEmpty()) {
+        onDone(false, {}, tr("адрес резервного сервиса не задан"));
+        return;
+    }
+
+    QNetworkRequest request;
+    request.setTransferTimeout(AwarpBackendConfig::bootstrapTimeoutMs());
+    request.setUrl(QUrl(url));
+    request.setRawHeader(AwarpBackendConfig::bootstrapSecretHeader().toUtf8(),
+                         AwarpBackendConfig::bootstrapSecret().toUtf8());
+
+    QNetworkReply *reply = amnApp->networkManager()->get(request);
+
+    connect(reply, &QNetworkReply::finished, this, [reply, onDone]() {
+        reply->deleteLater();
+
+        if (reply->error() != QNetworkReply::NoError) {
+            // NB: never log the request (it carries the API secret in a header).
+            logger.error() << "Bootstrap request failed:" << reply->errorString();
+            onDone(false, {}, reply->errorString());
+            return;
+        }
+
+        const QJsonObject response = QJsonDocument::fromJson(reply->readAll()).object();
+        if (response.isEmpty() || !response.value("ok").toBool(false)) {
+            const QString error = response.value("error").toString(tr("некорректный ответ резервного сервиса"));
+            logger.error() << "Bootstrap response not ok:" << error;
+            onDone(false, {}, error);
+            return;
+        }
+
+        WarpSession session;
+        session.clientPrivateKey = response.value("private_key").toString();
+        session.clientPublicKey = QString(); // bootstrap does not return it
+        session.peerPublicKey = response.value("peer_public_key").toString();
+        // Addresses already carry a CIDR suffix; addresses() detects the '/'
+        // and will not double-append via withCidr().
+        session.addressV4 = response.value("client_ipv4").toString();
+        session.addressV6 = response.value("client_ipv6").toString();
+
+        if (session.clientPrivateKey.isEmpty() || session.peerPublicKey.isEmpty()
+            || (session.addressV4.isEmpty() && session.addressV6.isEmpty())) {
+            logger.error() << "Bootstrap returned an incomplete config";
+            onDone(false, {}, tr("резервный сервис вернул неполный конфиг"));
+            return;
+        }
+
+        logger.info() << "WarpController: конфиг получен через резервный сервис";
+        onDone(true, session, QString());
     });
 }
 

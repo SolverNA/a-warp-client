@@ -35,7 +35,7 @@
 #include "xray_defs.h"
 #include <QProcess>
 
-#define BRAND_CODE "amn"
+#define BRAND_CODE "awarp"
 
 namespace {
 Logger logger("LinuxFirewall");
@@ -44,8 +44,8 @@ Logger logger("LinuxFirewall");
 namespace
 {
 const QString kAnchorName{BRAND_CODE "vpn"};
-const QString kPacketTag{"0x3211"};
-const QString kCGroupId{"0x567"};
+const QString kPacketTag{"0x7761"};
+const QString kCGroupId{"0x5a7"};
 const QString enabledKeyTemplate = "enabled:%1:%2";
 const QString disabledKeyTemplate = "disabled:%1:%2";
 const QString kVpnGroupName = BRAND_CODE "vpn";
@@ -193,8 +193,8 @@ QStringList LinuxFirewall::getDNSRules(const QStringList& servers)
     QStringList result;
     for (const QString& server : servers)
     {
-        result << QStringLiteral("-o amn0+ -d %1 -p udp --dport 53 -j ACCEPT").arg(server);
-        result << QStringLiteral("-o amn0+ -d %1 -p tcp --dport 53 -j ACCEPT").arg(server);
+        result << QStringLiteral("-o awarp0+ -d %1 -p udp --dport 53 -j ACCEPT").arg(server);
+        result << QStringLiteral("-o awarp0+ -d %1 -p tcp --dport 53 -j ACCEPT").arg(server);
         result << QStringLiteral("-o tun0+ -d %1 -p udp --dport 53 -j ACCEPT").arg(server);
         result << QStringLiteral("-o tun0+ -d %1 -p tcp --dport 53 -j ACCEPT").arg(server);
         result << QStringLiteral("-o tun2+ -d %1 -p udp --dport 53 -j ACCEPT").arg(server);
@@ -278,7 +278,7 @@ void LinuxFirewall::install()
                                                          });
 
     installAnchor(Both, QStringLiteral("200.allowVPN"), {
-                                                            QStringLiteral("-o amn0+ -j ACCEPT"),
+                                                            QStringLiteral("-o awarp0+ -j ACCEPT"),
                                                             QStringLiteral("-o tun0+ -j ACCEPT"),
                                                             QStringLiteral("-o tun2+ -j ACCEPT"),
                                                         });

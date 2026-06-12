@@ -35,12 +35,7 @@
 #include "xray_defs.h"
 #include <QProcess>
 
-// BRAND_CODE формирует префикс anchor для iptables-цепочек (kAnchorName = BRAND_CODE+"vpn").
-// iptables ограничивает имя цепочки 28 символами. Самая длинная цепочка:
-//   "<anchor>.a.130.allowMarkedXray" = len(anchor) + 3 + 19.
-// Чтобы влезть в 28, anchor должен быть <= 6 символов. "awg" -> kAnchorName="awgvpn" (6),
-// длина самой длинной цепочки = 6+3+19 = 28 (ровно влезает), и отличается от amnezia ("amnvpn").
-#define BRAND_CODE "awg"
+#define BRAND_CODE "amn"
 
 namespace {
 Logger logger("LinuxFirewall");
@@ -49,20 +44,15 @@ Logger logger("LinuxFirewall");
 namespace
 {
 const QString kAnchorName{BRAND_CODE "vpn"};
-const QString kPacketTag{"0x7761"};
-const QString kCGroupId{"0x5a7"};
+const QString kPacketTag{"0x3211"};
+const QString kCGroupId{"0x567"};
 const QString enabledKeyTemplate = "enabled:%1:%2";
 const QString disabledKeyTemplate = "disabled:%1:%2";
 const QString kVpnGroupName = BRAND_CODE "vpn";
 QHash<QString, LinuxFirewall::FilterCallbackFunc> anchorCallbacks;
 }
 
-// Числовой id routing-таблицы для fwmark-маршрутизации split-tunnel.
-// Текстовое имя ("<anchor>rt") требует регистрации в /etc/iproute2/rt_tables, иначе
-// `ip rule ... lookup <имя>` и `ip route flush table <имя>` падают с "invalid table ID".
-// Числовой id работает без регистрации. Значение уникально и не конфликтует с
-// системными (local=255, main=254, default=253) и с таблицей amnezia.
-QString LinuxFirewall::kRtableName = QStringLiteral("51821");
+QString LinuxFirewall::kRtableName = QStringLiteral("%1rt").arg(kAnchorName);
 QString LinuxFirewall::kOutputChain = QStringLiteral("OUTPUT");
 QString LinuxFirewall::kPostRoutingChain = QStringLiteral("POSTROUTING");
 QString LinuxFirewall::kPreRoutingChain = QStringLiteral("PREROUTING");
@@ -203,8 +193,8 @@ QStringList LinuxFirewall::getDNSRules(const QStringList& servers)
     QStringList result;
     for (const QString& server : servers)
     {
-        result << QStringLiteral("-o awarp0+ -d %1 -p udp --dport 53 -j ACCEPT").arg(server);
-        result << QStringLiteral("-o awarp0+ -d %1 -p tcp --dport 53 -j ACCEPT").arg(server);
+        result << QStringLiteral("-o amn0+ -d %1 -p udp --dport 53 -j ACCEPT").arg(server);
+        result << QStringLiteral("-o amn0+ -d %1 -p tcp --dport 53 -j ACCEPT").arg(server);
         result << QStringLiteral("-o tun0+ -d %1 -p udp --dport 53 -j ACCEPT").arg(server);
         result << QStringLiteral("-o tun0+ -d %1 -p tcp --dport 53 -j ACCEPT").arg(server);
         result << QStringLiteral("-o tun2+ -d %1 -p udp --dport 53 -j ACCEPT").arg(server);
@@ -288,7 +278,7 @@ void LinuxFirewall::install()
                                                          });
 
     installAnchor(Both, QStringLiteral("200.allowVPN"), {
-                                                            QStringLiteral("-o awarp0+ -j ACCEPT"),
+                                                            QStringLiteral("-o amn0+ -j ACCEPT"),
                                                             QStringLiteral("-o tun0+ -j ACCEPT"),
                                                             QStringLiteral("-o tun2+ -j ACCEPT"),
                                                         });

@@ -35,7 +35,7 @@
 #include <QProcess>
 #include <QCoreApplication>
 
-#define BRAND_IDENTIFIER "awarp"
+#define BRAND_IDENTIFIER "amn"
 
 namespace {
     Logger logger("MacOSFirewall");

@@ -20,13 +20,6 @@
 #include "killswitch.h"
 
 constexpr const int WG_TUN_PROC_TIMEOUT = 5000;
-// ВАЖНО: каталог сокетов жёстко зашит в бинарь amneziawg-go на этапе сборки
-// (ipc.socketDirectory = "/var/run/amneziawg") и НЕ переопределяется через env
-// (переменная WG_RUNTIME_DIR движком не читается). Поэтому C++-сторона обязана
-// смотреть туда же, куда движок пишет UAPI-сокет, иначе имя интерфейса не
-// прочитается («Unable to read tunnel interface name»). Изоляция от живой
-// AmneziaVPN сохраняется на уровне имени интерфейса: сокеты per-interface
-// (awarp0.sock vs amn0.sock) не конфликтуют в общем каталоге.
 constexpr const char* WG_RUNTIME_DIR = "/var/run/amneziawg";
 
 namespace {
@@ -86,7 +79,7 @@ bool WireguardUtilsLinux::addInterface(const InterfaceConfig& config) {
     m_tunnel.setProcessEnvironment(pe);
 
     QDir appPath(QCoreApplication::applicationDirPath());
-    QStringList wgArgs = {"-f", WG_INTERFACE};
+    QStringList wgArgs = {"-f", "amn0"};
     m_tunnel.start(appPath.filePath("amneziawg-go"), wgArgs);
     if (!m_tunnel.waitForStarted(WG_TUN_PROC_TIMEOUT)) {
         logger.error() << "Unable to start tunnel process due to timeout";
@@ -453,7 +446,7 @@ QString WireguardUtilsLinux::waitForTunnelName(const QString& filename) {
 
     while ((m_tunnel.state() == QProcess::Running) && timeout.isActive()) {
         QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
-        QString ifname = WG_INTERFACE;
+        QString ifname = "amn0";
 
         // Test-connect to the UAPI socket.
         QLocalSocket sock;

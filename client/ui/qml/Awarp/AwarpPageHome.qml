@@ -45,6 +45,43 @@ PageType {
             Layout.alignment: Qt.AlignHCenter
         }
 
+        // Latency (ping) to the active endpoint — only while connected.
+        // The C++ side runs a single lightweight TCP probe, repeated every few
+        // seconds; -1 means "measuring…".
+        LabelTextType {
+            id: pingLabel
+            objectName: "awarpPingLabel"
+
+            Layout.alignment: Qt.AlignHCenter
+            Layout.topMargin: 12
+
+            horizontalAlignment: Text.AlignHCenter
+            color: AmneziaStyle.color.mutedGray
+
+            visible: ConnectionController.isConnected
+            text: WarpController.latencyMs >= 0
+                  ? qsTr("Пинг: %1 мс").arg(WarpController.latencyMs)
+                  : qsTr("Пинг: измерение…")
+
+            Connections {
+                target: ConnectionController
+
+                function onConnectionStateChanged() {
+                    if (ConnectionController.isConnected) {
+                        WarpController.startLatencyMonitor()
+                    } else {
+                        WarpController.stopLatencyMonitor()
+                    }
+                }
+            }
+
+            Component.onCompleted: {
+                if (ConnectionController.isConnected) {
+                    WarpController.startLatencyMonitor()
+                }
+            }
+        }
+
         BasicButtonType {
             id: refreshWarpConfigButton
             objectName: "refreshWarpConfigButton"

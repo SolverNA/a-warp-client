@@ -67,6 +67,11 @@ public:
     
     bool isAutoConnect() const;
     void setAutoConnect(bool enabled);
+
+    // WARP endpoint mode: true = auto (scanner picks the best endpoint),
+    // false = manual (user-defined endpoint is never overwritten by the scanner)
+    bool isWarpEndpointAuto() const;
+    void setWarpEndpointAuto(bool enabled);
     bool isStartMinimized() const;
     void setStartMinimized(bool enabled);
     bool isScreenshotsEnabled() const;

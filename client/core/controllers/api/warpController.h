@@ -11,6 +11,8 @@
 #include "core/repositories/secureServersRepository.h"
 
 class ImportController;
+class WarpScanner;
+class QTimer;
 
 class WarpController : public QObject
 {
@@ -18,6 +20,9 @@ class WarpController : public QObject
 
     Q_PROPERTY(bool hasConfig READ hasConfig NOTIFY hasConfigChanged)
     Q_PROPERTY(bool isBusy READ isBusy NOTIFY busyChanged)
+    Q_PROPERTY(bool isScanning READ isScanning NOTIFY scanningChanged)
+    Q_PROPERTY(bool endpointAuto READ endpointAuto NOTIFY endpointAutoChanged)
+    Q_PROPERTY(int latencyMs READ latencyMs NOTIFY latencyChanged)
 
 public:
     explicit WarpController(SecureServersRepository *serversRepository,
@@ -26,6 +31,9 @@ public:
 
     bool hasConfig() const;
     bool isBusy() const;
+    bool isScanning() const;
+    bool endpointAuto() const;
+    int latencyMs() const;
     Q_INVOKABLE QString getConfigJson() const;
     Q_INVOKABLE QVariantMap getConfigFields() const;
     Q_INVOKABLE QVariantMap getDefaultConfigFields() const;
@@ -35,6 +43,12 @@ public slots:
     void fetchNewConfig();
     void refreshConfig();
 
+    // Latency measurement to the active endpoint, driven by the connection
+    // state from QML. startLatencyMonitor() probes immediately and repeats
+    // periodically while connected; stopLatencyMonitor() halts it.
+    void startLatencyMonitor();
+    void stopLatencyMonitor();
+
 signals:
     void configReady();
     void configUpdated();
@@ -42,6 +56,9 @@ signals:
     void errorOccurred(const QString &errorMessage);
     void busyChanged(bool busy);
     void hasConfigChanged();
+    void scanningChanged(bool scanning);
+    void endpointAutoChanged(bool endpointAuto);
+    void latencyChanged(int latencyMs);
 
 private:
     struct WarpSession
@@ -89,13 +106,33 @@ private:
     QString findWarpServerId() const;
 
     void setBusy(bool busy);
+    void setScanning(bool scanning);
     void fail(const QString &errorMessage);
+
+    // Endpoint scanner orchestration (parallel with registerAccount)
+    void startEndpointScan();
+    void applyScannedEndpoint(const QString &serverId, const QString &ip, int port);
+
+    // Latency measurement
+    QString activeEndpointHost() const;
+    void probeLatencyOnce();
+    void setLatency(int latencyMs);
 
     SecureServersRepository *m_serversRepository;
     SecureAppSettingsRepository *m_appSettingsRepository;
     ImportController *m_importController;
 
+    WarpScanner *m_scanner = nullptr;
+
     bool m_isBusy = false;
+    bool m_isScanning = false;
+
+    // Best endpoint found by the most recent scan (empty until the scan finishes)
+    QString m_scannedEndpointIp;
+
+    // Latency-to-active-endpoint monitor
+    QTimer *m_latencyTimer = nullptr;
+    int m_latencyMs = -1; // -1 = unknown / not measured
 };
 
 #endif // WARPCONTROLLER_H

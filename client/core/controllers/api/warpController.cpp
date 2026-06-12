@@ -1,11 +1,15 @@
 #include "warpController.h"
 
+#include <QAbstractSocket>
 #include <QDateTime>
+#include <QElapsedTimer>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QRegularExpression>
+#include <QTcpSocket>
+#include <QTimer>
 #include <QUrl>
 
 #include "amneziaApplication.h"
@@ -20,6 +24,7 @@
 #include "core/utils/constants/protocolConstants.h"
 #include "core/utils/constants/warpConstants.h"
 #include "core/utils/serverConfigUtils.h"
+#include "warpScanner.h"
 
 using namespace amnezia;
 
@@ -82,6 +87,7 @@ namespace
         constexpr QLatin1String allowedIps("allowedIps");
         constexpr QLatin1String endpointHost("endpointHost");
         constexpr QLatin1String endpointPort("endpointPort");
+        constexpr QLatin1String endpointAuto("endpointAuto");
         // read-only session fields
         constexpr QLatin1String clientIpV4("clientIpV4");
         constexpr QLatin1String clientIpV6("clientIpV6");
@@ -107,11 +113,33 @@ WarpController::WarpController(SecureServersRepository *serversRepository,
     : QObject(parent),
       m_serversRepository(serversRepository),
       m_appSettingsRepository(appSettingsRepository),
-      m_importController(importController)
+      m_importController(importController),
+      m_scanner(new WarpScanner(this))
 {
     // hasConfig depends on the stored servers, so any add/remove may change it
     connect(m_serversRepository, &SecureServersRepository::serverAdded, this, &WarpController::hasConfigChanged);
     connect(m_serversRepository, &SecureServersRepository::serverRemoved, this, &WarpController::hasConfigChanged);
+
+    connect(m_scanner, &WarpScanner::scanFinished, this, [this](const QString &bestIp, int latencyMs) {
+        logger.info() << "Endpoint scan picked" << bestIp << "(" << latencyMs << "ms)";
+        m_scannedEndpointIp = bestIp;
+        setScanning(false);
+        // Apply only in auto mode; manual endpoints are never overwritten
+        if (m_appSettingsRepository->isWarpEndpointAuto()) {
+            const QString serverId = findWarpServerId();
+            if (!serverId.isEmpty()) {
+                applyScannedEndpoint(serverId, bestIp, protocols::warp::warpPortDefault);
+            }
+        }
+    });
+    connect(m_scanner, &WarpScanner::scanFailed, this, [this](const QString &errorMessage) {
+        logger.warning() << "Endpoint scan failed:" << errorMessage;
+        setScanning(false);
+    });
+
+    m_latencyTimer = new QTimer(this);
+    m_latencyTimer->setInterval(8 * 1000); // light re-probe while connected
+    connect(m_latencyTimer, &QTimer::timeout, this, [this]() { probeLatencyOnce(); });
 }
 
 bool WarpController::hasConfig() const
@@ -124,12 +152,32 @@ bool WarpController::isBusy() const
     return m_isBusy;
 }
 
+bool WarpController::isScanning() const
+{
+    return m_isScanning;
+}
+
+bool WarpController::endpointAuto() const
+{
+    return m_appSettingsRepository->isWarpEndpointAuto();
+}
+
+int WarpController::latencyMs() const
+{
+    return m_latencyMs;
+}
+
 void WarpController::fetchNewConfig()
 {
     if (m_isBusy) {
         return;
     }
     setBusy(true);
+
+    // Scan for the best endpoint in parallel with key registration.
+    // The session is applied as soon as it arrives; the scanned endpoint is
+    // applied when the scan finishes (only in auto mode).
+    startEndpointScan();
 
     registerAccount([this](bool ok, const WarpSession &session) {
         if (!ok) {
@@ -151,6 +199,9 @@ void WarpController::refreshConfig()
         return;
     }
     setBusy(true);
+
+    // Scan for the best endpoint in parallel with key registration (see fetchNewConfig)
+    startEndpointScan();
 
     registerAccount([this, serverId](bool ok, const WarpSession &session) {
         if (!ok) {
@@ -281,6 +332,12 @@ void WarpController::importNewConfig(const WarpSession &session)
         m_serversRepository->removeServer(previousServerId);
     }
 
+    // If the scan already finished (before the session arrived), apply its
+    // endpoint now that the server exists — only in auto mode.
+    if (!m_scannedEndpointIp.isEmpty() && m_appSettingsRepository->isWarpEndpointAuto()) {
+        applyScannedEndpoint(findWarpServerId(), m_scannedEndpointIp, protocols::warp::warpPortDefault);
+    }
+
     logger.info() << "New WARP config imported";
     setBusy(false);
     emit configReady();
@@ -316,6 +373,11 @@ void WarpController::updateExistingConfig(const QString &serverId, const WarpSes
     awgConfig->setClientConfig(clientConfig);
     serverConfig->updateContainerConfig(container, containerConfig);
     m_serversRepository->editServer(serverId, serverConfig->toJson(), serverConfigUtils::ConfigType::Native);
+
+    // If the scan already finished, apply its endpoint now (auto mode only)
+    if (!m_scannedEndpointIp.isEmpty() && m_appSettingsRepository->isWarpEndpointAuto()) {
+        applyScannedEndpoint(serverId, m_scannedEndpointIp, protocols::warp::warpPortDefault);
+    }
 
     logger.info() << "WARP config refreshed";
     setBusy(false);
@@ -416,6 +478,8 @@ QVariantMap WarpController::getConfigFields() const
     fields[fieldKey::clientIpV6] = clientIpV6;
     fields[fieldKey::peerPublicKey] = clientConfig.serverPublicKey;
 
+    fields[fieldKey::endpointAuto] = m_appSettingsRepository->isWarpEndpointAuto();
+
     return fields;
 }
 
@@ -439,6 +503,7 @@ QVariantMap WarpController::getDefaultConfigFields() const
     fields[fieldKey::allowedIps] = params.allowedIps;
     fields[fieldKey::endpointHost] = params.endpointHost;
     fields[fieldKey::endpointPort] = params.endpointPort;
+    fields[fieldKey::endpointAuto] = true;
     return fields;
 }
 
@@ -542,6 +607,16 @@ bool WarpController::saveConfig(const QVariantMap &fields)
     serverConfig->updateContainerConfig(container, containerConfig);
     m_serversRepository->editServer(serverId, serverConfig->toJson(), serverConfigUtils::ConfigType::Native);
 
+    // Persist the endpoint mode: in auto mode the scanner may overwrite the
+    // endpoint on the next refresh; in manual mode it never touches it.
+    if (fields.contains(fieldKey::endpointAuto)) {
+        const bool wantAuto = fields.value(fieldKey::endpointAuto).toBool();
+        if (wantAuto != m_appSettingsRepository->isWarpEndpointAuto()) {
+            m_appSettingsRepository->setWarpEndpointAuto(wantAuto);
+            emit endpointAutoChanged(wantAuto);
+        }
+    }
+
     logger.info() << "WARP config settings saved";
     emit configSaved();
     return true;
@@ -628,6 +703,131 @@ QString WarpController::findWarpServerId() const
     return QString();
 }
 
+void WarpController::startEndpointScan()
+{
+    m_scannedEndpointIp.clear();
+    setScanning(true);
+    m_scanner->scanBest();
+}
+
+void WarpController::applyScannedEndpoint(const QString &serverId, const QString &ip, int port)
+{
+    if (ip.isEmpty() || serverId.isEmpty()) {
+        return;
+    }
+
+    auto serverConfig = m_serversRepository->nativeConfig(serverId);
+    if (!serverConfig.has_value()) {
+        return;
+    }
+
+    const DockerContainer container = serverConfig->defaultContainer;
+    ContainerConfig containerConfig = serverConfig->containerConfig(container);
+    AwgProtocolConfig *awgConfig = containerConfig.getAwgProtocolConfig();
+    if (!awgConfig || !awgConfig->hasClientConfig()) {
+        return;
+    }
+
+    // Update the endpoint in every place it is stored (mirrors saveConfig)
+    AwgClientConfig clientConfig = awgConfig->clientConfig.value();
+    replaceConfigTextValue(clientConfig.nativeConfig, protocols::wireguard::Endpoint,
+                           QStringLiteral("%1:%2").arg(ip).arg(port));
+    clientConfig.hostName = ip;
+    clientConfig.port = port;
+
+    awgConfig->setClientConfig(clientConfig);
+    awgConfig->serverConfig.port = QString::number(port);
+    serverConfig->hostName = ip;
+
+    serverConfig->updateContainerConfig(container, containerConfig);
+    m_serversRepository->editServer(serverId, serverConfig->toJson(), serverConfigUtils::ConfigType::Native);
+
+    logger.info() << "WARP endpoint set to" << ip << ":" << port << "by scanner";
+}
+
+void WarpController::startLatencyMonitor()
+{
+    probeLatencyOnce();
+    if (!m_latencyTimer->isActive()) {
+        m_latencyTimer->start();
+    }
+}
+
+void WarpController::stopLatencyMonitor()
+{
+    m_latencyTimer->stop();
+    setLatency(-1);
+}
+
+QString WarpController::activeEndpointHost() const
+{
+    const QString serverId = findWarpServerId();
+    if (serverId.isEmpty()) {
+        return QString();
+    }
+    const auto serverConfig = m_serversRepository->nativeConfig(serverId);
+    if (!serverConfig.has_value()) {
+        return QString();
+    }
+    const ContainerConfig containerConfig = serverConfig->containerConfig(serverConfig->defaultContainer);
+    const auto *awgConfig = containerConfig.getAwgProtocolConfig();
+    if (!awgConfig || !awgConfig->hasClientConfig()) {
+        return QString();
+    }
+    return awgConfig->clientConfig->hostName;
+}
+
+void WarpController::probeLatencyOnce()
+{
+    const QString host = activeEndpointHost();
+    if (host.isEmpty()) {
+        setLatency(-1);
+        return;
+    }
+
+    auto *socket = new QTcpSocket(this);
+    auto *timer = new QElapsedTimer;
+    auto *done = new bool(false);
+    timer->start();
+
+    auto finish = [this, socket, timer, done](int latency) {
+        if (*done) {
+            return;
+        }
+        *done = true;
+        socket->disconnect(this);
+        socket->abort();
+        socket->deleteLater();
+        delete timer;
+        delete done;
+        setLatency(latency);
+    };
+
+    connect(socket, &QTcpSocket::connected, this, [finish, timer]() {
+        finish(int(timer->elapsed()));
+    });
+    connect(socket, &QAbstractSocket::errorOccurred, this, [finish](QAbstractSocket::SocketError) {
+        finish(-1);
+    });
+
+    socket->connectToHost(host, protocols::warp::scanProbePort);
+
+    QTimer::singleShot(protocols::warp::scanProbeTimeoutMs, socket, [socket, finish]() {
+        if (socket->state() != QAbstractSocket::ConnectedState) {
+            finish(-1);
+        }
+    });
+}
+
+void WarpController::setLatency(int latencyMs)
+{
+    if (m_latencyMs == latencyMs) {
+        return;
+    }
+    m_latencyMs = latencyMs;
+    emit latencyChanged(latencyMs);
+}
+
 void WarpController::setBusy(bool busy)
 {
     if (m_isBusy == busy) {
@@ -635,6 +835,15 @@ void WarpController::setBusy(bool busy)
     }
     m_isBusy = busy;
     emit busyChanged(busy);
+}
+
+void WarpController::setScanning(bool scanning)
+{
+    if (m_isScanning == scanning) {
+        return;
+    }
+    m_isScanning = scanning;
+    emit scanningChanged(scanning);
 }
 
 void WarpController::fail(const QString &errorMessage)

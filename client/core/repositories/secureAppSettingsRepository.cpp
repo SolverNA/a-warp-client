@@ -310,6 +310,16 @@ void SecureAppSettingsRepository::setAutoConnect(bool enabled)
     setValue("Conf/autoConnect", enabled);
 }
 
+bool SecureAppSettingsRepository::isWarpEndpointAuto() const
+{
+    return value("Warp/endpointAuto", true).toBool();
+}
+
+void SecureAppSettingsRepository::setWarpEndpointAuto(bool enabled)
+{
+    setValue("Warp/endpointAuto", enabled);
+}
+
 bool SecureAppSettingsRepository::isStartMinimized() const
 {
     return value("Conf/startMinimized", false).toBool();

@@ -40,6 +40,7 @@ Window {
     readonly property string awarpHomePath: "qrc:/ui/qml/Awarp/AwarpPageHome.qml"
     readonly property string awarpSettingsPath: "qrc:/ui/qml/Awarp/AwarpPageSettings.qml"
     readonly property string awarpWarpConfigPath: "qrc:/ui/qml/Awarp/AwarpPageWarpConfigSettings.qml"
+    readonly property string awarpRelaysPath: "qrc:/ui/qml/Awarp/AwarpPageRelays.qml"
     readonly property string awarpAboutPath: "qrc:/ui/qml/Awarp/AwarpPageAbout.qml"
 
     // Push one of our own pages and wire its navigation signals to this root.
@@ -51,6 +52,9 @@ Window {
             }
             if (item.openWarpConfigRequested !== undefined) {
                 item.openWarpConfigRequested.connect(root.goToWarpConfig)
+            }
+            if (item.openRelaysRequested !== undefined) {
+                item.openRelaysRequested.connect(root.goToAwarpRelays)
             }
             if (item.openAboutRequested !== undefined) {
                 item.openAboutRequested.connect(root.goToAwarpAbout)
@@ -71,6 +75,10 @@ Window {
 
     function goToWarpConfig() {
         pushAwarpPage(awarpWarpConfigPath)
+    }
+
+    function goToAwarpRelays() {
+        pushAwarpPage(awarpRelaysPath)
     }
 
     function goToAwarpAbout() {

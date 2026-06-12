@@ -5,6 +5,7 @@
         <file>AwarpPageSettings.qml</file>
         <file>AwarpConnectButton.qml</file>
         <file>AwarpPageWarpConfigSettings.qml</file>
+        <file>AwarpPageRelays.qml</file>
         <file>AwarpPageAbout.qml</file>
     </qresource>
 </RCC>

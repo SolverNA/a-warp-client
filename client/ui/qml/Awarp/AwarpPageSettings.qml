@@ -16,6 +16,9 @@ PageType {
     // Our own WARP config page has no PageEnum; AwarpMain handles it via this signal.
     signal openWarpConfigRequested()
 
+    // Our own Relays page has no PageEnum; AwarpMain handles it via this signal.
+    signal openRelaysRequested()
+
     // Our own About page has no PageEnum; AwarpMain handles it via this signal.
     signal openAboutRequested()
 
@@ -99,6 +102,7 @@ PageType {
 
     property list<QtObject> settingsEntries: [
         warpConfig,
+        relays,
         connection,
         dns,
         killSwitch,
@@ -115,6 +119,17 @@ PageType {
         property bool isVisible: true
         readonly property var clickedHandler: function() {
             root.openWarpConfigRequested()
+        }
+    }
+
+    QtObject {
+        id: relays
+
+        property string title: qsTr("Релеи")
+        readonly property string leftImagePath: "qrc:/images/controls/globe-2.svg"
+        property bool isVisible: true
+        readonly property var clickedHandler: function() {
+            root.openRelaysRequested()
         }
     }
 

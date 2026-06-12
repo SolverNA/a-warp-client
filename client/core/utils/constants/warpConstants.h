@@ -11,6 +11,10 @@ namespace amnezia
             constexpr char apiBaseUrl[] = "https://api.cloudflareclient.com/v0i1909051800";
             constexpr char userAgent[] = "okhttp/3.12.1";
             constexpr int requestTimeoutMsecs = 7 * 1000;
+            // Guard for the DNS resolution phase (QHostInfo::lookupHost): if the
+            // resolver hangs (killswitch / network drop) the lookup callback may
+            // never fire, so we fall back to sending on the hostname after this.
+            constexpr int lookupTimeoutMsecs = 4 * 1000;
 
             // AmneziaWG obfuscation defaults
             constexpr char defaultJunkPacketCount[] = "120";

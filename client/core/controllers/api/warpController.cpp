@@ -373,41 +373,78 @@ void WarpController::sendWithIPv4(QNetworkRequest request, const QString &logTag
         return;
     }
 
-    QHostInfo::lookupHost(host, this, [this, request, host, logTag, send](const QHostInfo &info) mutable {
-        QHostAddress ipv4;
-        if (info.error() == QHostInfo::NoError) {
-            for (const QHostAddress &address : info.addresses()) {
-                if (address.protocol() == QAbstractSocket::IPv4Protocol) {
-                    ipv4 = address;
-                    break;
+    // Guard the DNS phase: if the resolver hangs the lookup callback may never
+    // fire and `send` would never be called (no reply → no transferTimeout → no
+    // reg→bootstrap fallback → busy stuck). A watchdog timer guarantees exactly
+    // one `send`: whichever of the lookup callback or the timeout fires first
+    // wins (tracked by the shared `sent` flag), the other is a no-op.
+    auto sent = std::make_shared<bool>(false);
+
+    auto *watchdog = new QTimer(this);
+    watchdog->setSingleShot(true);
+    watchdog->setInterval(protocols::warp::lookupTimeoutMsecs);
+
+    const int lookupId = QHostInfo::lookupHost(
+            host, this,
+            [this, request, host, logTag, send, sent, watchdog](const QHostInfo &info) mutable {
+                if (*sent) {
+                    return;
                 }
-            }
-        }
+                *sent = true;
+                watchdog->stop();
+                watchdog->deleteLater();
 
-        if (ipv4.isNull()) {
-            // No A record (IPv6-only or lookup failed): send on the hostname as before.
-            logger.warning() << "WarpController:" << logTag
-                             << "— нет IPv4 (A) записи для" << host << ", отправляю по hostname";
-            send(request);
-            return;
-        }
+                QHostAddress ipv4;
+                if (info.error() == QHostInfo::NoError) {
+                    for (const QHostAddress &address : info.addresses()) {
+                        if (address.protocol() == QAbstractSocket::IPv4Protocol) {
+                            ipv4 = address;
+                            break;
+                        }
+                    }
+                }
 
-        // Connect by IPv4 while keeping the hostname for the HTTP Host header and
-        // the TLS SNI / certificate verification.
-        QUrl ipUrl = request.url();
-        ipUrl.setHost(ipv4.toString());
-        request.setUrl(ipUrl);
-        // Set the HTTP Host header explicitly (this Qt build has no HostHeader
-        // KnownHeaders enum) so the server routes by the original hostname even
-        // though we connect by IP.
-        request.setRawHeader("Host", host.toUtf8());
-        // Keep TLS SNI and certificate verification bound to the hostname.
-        request.setPeerVerifyName(host);
+                if (ipv4.isNull()) {
+                    // No A record (IPv6-only or lookup failed): send on the hostname as before.
+                    logger.warning() << "WarpController:" << logTag
+                                     << "— нет IPv4 (A) записи для" << host << ", отправляю по hostname";
+                    send(request);
+                    return;
+                }
 
-        logger.info() << "WarpController:" << logTag << "via IPv4" << ipv4.toString()
-                      << "(host" << host << ")";
-        send(request);
-    });
+                // Connect by IPv4 while keeping the hostname for the HTTP Host header and
+                // the TLS SNI / certificate verification.
+                QUrl ipUrl = request.url();
+                ipUrl.setHost(ipv4.toString());
+                request.setUrl(ipUrl);
+                // Set the HTTP Host header explicitly (this Qt build has no HostHeader
+                // KnownHeaders enum) so the server routes by the original hostname even
+                // though we connect by IP.
+                request.setRawHeader("Host", host.toUtf8());
+                // Keep TLS SNI and certificate verification bound to the hostname.
+                request.setPeerVerifyName(host);
+
+                logger.info() << "WarpController:" << logTag << "via IPv4" << ipv4.toString()
+                              << "(host" << host << ")";
+                send(request);
+            });
+
+    connect(watchdog, &QTimer::timeout, this,
+            [this, request, host, logTag, send, sent, watchdog, lookupId]() mutable {
+                if (*sent) {
+                    return;
+                }
+                *sent = true;
+                QHostInfo::abortHostLookup(lookupId);
+                watchdog->deleteLater();
+                // Resolver stalled: fall through to sending on the hostname (same
+                // path as a missing A record) so the request actually leaves and the
+                // normal transferTimeout / reg→bootstrap fallback can kick in.
+                logger.warning() << "WarpController:" << logTag
+                                 << "— lookupHost timeout for" << host << ", отправляю по hostname";
+                send(request);
+            });
+    watchdog->start();
 }
 
 void WarpController::sendRequestAsync(const QByteArray &verb, const QString &endpoint, const QJsonObject &body,
@@ -1062,9 +1099,13 @@ void WarpController::probeLatencyOnce()
 {
     const QString host = activeEndpointHost();
     if (host.isEmpty()) {
-        setLatency(-1);
+        // No endpoint to probe — report "unavailable", not "measuring".
+        setLatency(-2);
         return;
     }
+
+    // Mark "measuring" for the duration of this probe.
+    setLatency(-1);
 
     auto *socket = new QTcpSocket(this);
     auto *timer = new QElapsedTimer;
@@ -1088,14 +1129,16 @@ void WarpController::probeLatencyOnce()
         finish(int(timer->elapsed()));
     });
     connect(socket, &QAbstractSocket::errorOccurred, this, [finish](QAbstractSocket::SocketError) {
-        finish(-1);
+        // Probe failed (e.g. port closed) → "unavailable".
+        finish(-2);
     });
 
     socket->connectToHost(host, protocols::warp::scanProbePort);
 
     QTimer::singleShot(protocols::warp::scanProbeTimeoutMs, socket, [socket, finish]() {
         if (socket->state() != QAbstractSocket::ConnectedState) {
-            finish(-1);
+            // Probe timed out → "unavailable".
+            finish(-2);
         }
     });
 }

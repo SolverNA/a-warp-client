@@ -35,7 +35,12 @@
 #include "xray_defs.h"
 #include <QProcess>
 
-#define BRAND_CODE "awarp"
+// BRAND_CODE формирует префикс anchor для iptables-цепочек (kAnchorName = BRAND_CODE+"vpn").
+// iptables ограничивает имя цепочки 28 символами. Самая длинная цепочка:
+//   "<anchor>.a.130.allowMarkedXray" = len(anchor) + 3 + 19.
+// Чтобы влезть в 28, anchor должен быть <= 6 символов. "awg" -> kAnchorName="awgvpn" (6),
+// длина самой длинной цепочки = 6+3+19 = 28 (ровно влезает), и отличается от amnezia ("amnvpn").
+#define BRAND_CODE "awg"
 
 namespace {
 Logger logger("LinuxFirewall");
@@ -52,7 +57,12 @@ const QString kVpnGroupName = BRAND_CODE "vpn";
 QHash<QString, LinuxFirewall::FilterCallbackFunc> anchorCallbacks;
 }
 
-QString LinuxFirewall::kRtableName = QStringLiteral("%1rt").arg(kAnchorName);
+// Числовой id routing-таблицы для fwmark-маршрутизации split-tunnel.
+// Текстовое имя ("<anchor>rt") требует регистрации в /etc/iproute2/rt_tables, иначе
+// `ip rule ... lookup <имя>` и `ip route flush table <имя>` падают с "invalid table ID".
+// Числовой id работает без регистрации. Значение уникально и не конфликтует с
+// системными (local=255, main=254, default=253) и с таблицей amnezia.
+QString LinuxFirewall::kRtableName = QStringLiteral("51821");
 QString LinuxFirewall::kOutputChain = QStringLiteral("OUTPUT");
 QString LinuxFirewall::kPostRoutingChain = QStringLiteral("POSTROUTING");
 QString LinuxFirewall::kPreRoutingChain = QStringLiteral("PREROUTING");

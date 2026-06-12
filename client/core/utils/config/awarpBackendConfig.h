@@ -16,6 +16,8 @@ namespace AwarpBackendConfig
     {
         QString host;
         int port = 0;
+        QString country; // ISO2 country code (may be empty)
+        QString label;   // human-readable name (may be empty)
     };
 
     bool bootstrapEnabled();

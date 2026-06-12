@@ -72,6 +72,11 @@ public:
     // false = manual (user-defined endpoint is never overwritten by the scanner)
     bool isWarpEndpointAuto() const;
     void setWarpEndpointAuto(bool enabled);
+
+    // AWARP relays: JSON array of user-defined relays, stored as a compact
+    // JSON string under "Warp/relays" (default "[]").
+    QString getWarpRelays() const;
+    void setWarpRelays(const QString &relaysJson);
     bool isStartMinimized() const;
     void setStartMinimized(bool enabled);
     bool isScreenshotsEnabled() const;

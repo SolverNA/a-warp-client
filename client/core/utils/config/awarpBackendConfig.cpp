@@ -71,6 +71,8 @@ namespace
             AwarpBackendConfig::Relay relay;
             relay.host = relayObj.value("host").toString();
             relay.port = relayObj.value("port").toInt();
+            relay.country = relayObj.value("country").toString();
+            relay.label = relayObj.value("label").toString();
             if (!relay.host.isEmpty() && relay.port > 0) {
                 data.relays << relay;
             }

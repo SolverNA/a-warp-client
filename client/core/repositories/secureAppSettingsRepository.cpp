@@ -320,6 +320,16 @@ void SecureAppSettingsRepository::setWarpEndpointAuto(bool enabled)
     setValue("Warp/endpointAuto", enabled);
 }
 
+QString SecureAppSettingsRepository::getWarpRelays() const
+{
+    return value("Warp/relays", QStringLiteral("[]")).toString();
+}
+
+void SecureAppSettingsRepository::setWarpRelays(const QString &relaysJson)
+{
+    setValue("Warp/relays", relaysJson);
+}
+
 bool SecureAppSettingsRepository::isStartMinimized() const
 {
     return value("Conf/startMinimized", false).toBool();

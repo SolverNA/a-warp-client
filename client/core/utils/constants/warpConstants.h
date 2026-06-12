@@ -30,6 +30,31 @@ namespace amnezia
             constexpr char endpointPort[] = "500";
             constexpr char hostName[] = "162.159.192.1";
 
+            // Endpoint scanner: Cloudflare WARP /24 pools to probe.
+            // A live endpoint is found via a plain TCP-connect to port 80 (Cloudflare
+            // does not answer an empty WireGuard handshake over UDP, so a UDP probe is
+            // pointless); the TCP-handshake time is used as the latency metric.
+            inline const char *const scanCidrPools[] = {
+                "162.159.192", "162.159.193", "162.159.195",
+                "188.114.96",  "188.114.97",  "188.114.98", "188.114.99",
+            };
+            constexpr int scanCidrPoolCount = 7;
+
+            // TCP probe port (NOT the WARP port — see note above)
+            constexpr quint16 scanProbePort = 80;
+
+            // Default WARP port written to the chosen endpoint
+            constexpr quint16 warpPortDefault = 500;
+            constexpr quint16 warpPortAlt = 2408;
+
+            // Scanner tuning
+            constexpr int scanParallelism = 64;     // concurrent in-flight probes
+            constexpr int scanProbeTimeoutMs = 1000; // per-probe TCP-connect timeout
+            constexpr int scanHostsPerPool = 24;     // random hosts sampled from each /24
+            constexpr int scanLiveLimit = 12;        // stop early once this many live found
+            constexpr int scanConfirmProbes = 2;     // extra probes to average for top picks
+            constexpr int scanConfirmTopN = 4;       // how many top candidates to re-probe
+
             constexpr char defaultAllowedIps[] = "0.0.0.0/0, ::/0";
             constexpr char defaultDns[] = "1.1.1.1, 2606:4700:4700::1111, 1.0.0.1, 2606:4700:4700::1001";
 

@@ -20,7 +20,14 @@
 #include "killswitch.h"
 
 constexpr const int WG_TUN_PROC_TIMEOUT = 5000;
-constexpr const char* WG_RUNTIME_DIR = "/var/run/awarpwg";
+// ВАЖНО: каталог сокетов жёстко зашит в бинарь amneziawg-go на этапе сборки
+// (ipc.socketDirectory = "/var/run/amneziawg") и НЕ переопределяется через env
+// (переменная WG_RUNTIME_DIR движком не читается). Поэтому C++-сторона обязана
+// смотреть туда же, куда движок пишет UAPI-сокет, иначе имя интерфейса не
+// прочитается («Unable to read tunnel interface name»). Изоляция от живой
+// AmneziaVPN сохраняется на уровне имени интерфейса: сокеты per-interface
+// (awarp0.sock vs amn0.sock) не конфликтуют в общем каталоге.
+constexpr const char* WG_RUNTIME_DIR = "/var/run/amneziawg";
 
 namespace {
 Logger logger("WireguardUtilsLinux");

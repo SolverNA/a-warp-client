@@ -76,6 +76,10 @@ PageType {
 
             enabled: WarpController.hasConfig
 
+            // true = endpoint chosen automatically by the scanner (read-only field),
+            // false = user-defined endpoint (editable, never overwritten by the scanner)
+            property bool endpointAutoMode: true
+
             function loadFields(fields) {
                 if (!fields) {
                     return
@@ -94,6 +98,10 @@ PageType {
                 if (fields.dns !== undefined) dnsTextField.textField.text = fields.dns
                 if (fields.endpointHost !== undefined) endpointHostTextField.textField.text = fields.endpointHost
                 if (fields.endpointPort !== undefined) endpointPortTextField.textField.text = fields.endpointPort
+                if (fields.endpointAuto !== undefined) {
+                    delegateItem.endpointAutoMode = fields.endpointAuto
+                    endpointModeSwitcher.checked = fields.endpointAuto
+                }
                 if (fields.allowedIps !== undefined) allowedIpsTextField.textField.text = fields.allowedIps
                 // Read-only session fields are present only in the saved config
                 clientIpV4TextField.textField.text = fields.clientIpV4 !== undefined ? fields.clientIpV4 : ""
@@ -125,7 +133,8 @@ PageType {
                     "dns": dnsTextField.textField.text.trim(),
                     "endpointHost": endpointHostTextField.textField.text.trim(),
                     "endpointPort": endpointPortTextField.textField.text.trim(),
-                    "allowedIps": allowedIpsTextField.textField.text.trim()
+                    "allowedIps": allowedIpsTextField.textField.text.trim(),
+                    "endpointAuto": delegateItem.endpointAutoMode
                 }
             }
 
@@ -171,12 +180,16 @@ PageType {
                     return qsTr("MTU должен быть в диапазоне 576–65535")
                 }
 
-                if (endpointHostTextField.textField.text.trim() === "") {
-                    return qsTr("Endpoint (адрес) не может быть пустым")
-                }
-                var port = parseInt(endpointPortTextField.textField.text)
-                if (isNaN(port) || port < 1 || port > 65535) {
-                    return qsTr("Порт должен быть в диапазоне 1–65535")
+                // In auto mode the endpoint is chosen by the scanner, so the
+                // field may legitimately be empty until the first scan.
+                if (!delegateItem.endpointAutoMode) {
+                    if (endpointHostTextField.textField.text.trim() === "") {
+                        return qsTr("Endpoint (адрес) не может быть пустым")
+                    }
+                    var port = parseInt(endpointPortTextField.textField.text)
+                    if (isNaN(port) || port < 1 || port > 65535) {
+                        return qsTr("Порт должен быть в диапазоне 1–65535")
+                    }
                 }
 
                 if (allowedIpsTextField.textField.text.trim() === "") {
@@ -425,13 +438,36 @@ PageType {
                 }
             }
 
+            SwitcherType {
+                id: endpointModeSwitcher
+
+                Layout.fillWidth: true
+                Layout.topMargin: 16
+                Layout.leftMargin: 16
+                Layout.rightMargin: 16
+
+                text: qsTr("Эндпоинт: авто (сканер)")
+                descriptionText: qsTr("Включено — лучший эндпоинт подбирается сканером при обновлении конфига. Выключено — вы задаёте эндпоинт вручную, и сканер его не меняет.")
+
+                checked: delegateItem.endpointAutoMode
+
+                onToggled: {
+                    delegateItem.endpointAutoMode = checked
+                }
+            }
+
             AwgTextField {
                 id: endpointHostTextField
 
                 Layout.leftMargin: 16
                 Layout.rightMargin: 16
 
-                headerText: qsTr("Endpoint — адрес сервера")
+                enabled: !delegateItem.endpointAutoMode
+                checkEmptyText: false
+
+                headerText: delegateItem.endpointAutoMode
+                            ? qsTr("Endpoint — адрес сервера (выбран сканером)")
+                            : qsTr("Endpoint — адрес сервера")
 
                 textField.onActiveFocusChanged: {
                     if (textField.activeFocus) {
@@ -445,6 +481,9 @@ PageType {
 
                 Layout.leftMargin: 16
                 Layout.rightMargin: 16
+
+                enabled: !delegateItem.endpointAutoMode
+                checkEmptyText: false
 
                 headerText: qsTr("Endpoint — порт")
                 textField.maximumLength: 5

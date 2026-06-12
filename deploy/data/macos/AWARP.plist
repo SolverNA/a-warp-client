@@ -13,7 +13,7 @@
     <key>RunAtLoad</key>
     <true/>
     <key>GroupName</key>
-    <string>amnvpn</string>
+    <string>awarp</string>
     <key>Sockets</key>
 	<dict>
 	    <key>Listeners</key>

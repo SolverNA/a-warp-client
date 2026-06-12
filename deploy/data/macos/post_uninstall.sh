@@ -8,7 +8,7 @@ USER_APP_SUPPORT="$HOME/Library/Application Support/$APP_NAME"
 SYSTEM_APP_SUPPORT="/Library/Application Support/$APP_NAME"
 LOG_FOLDER="/var/log/$APP_NAME"
 CACHES_FOLDER="$HOME/Library/Caches/$APP_NAME"
-SERVICE_GROUP="amnvpn"
+SERVICE_GROUP="awarp"
 
 # Attempt to quit the GUI application if it's currently running
 if pgrep -x "$APP_NAME" > /dev/null; then
@@ -51,10 +51,10 @@ rm -rf "$CACHES_FOLDER"
 sudo rm -rf "/Library/Application Support/${APP_NAME}/pf"
 
 # ---------------- PF firewall cleanup ----------------------
-# Rules are loaded under the anchor "amn" (see macosfirewall.cpp)
+# Rules are loaded under the anchor "awarp" (see macosfirewall.cpp)
 # Flush only that anchor to avoid destroying user/system rules.
 
-PF_ANCHOR="amn"
+PF_ANCHOR="awarp"
 
 ### Flush all PF rules, NATs, and tables under our anchor and sub-anchors ###
 anchors=$(sudo pfctl -s Anchors 2>/dev/null | awk '/^'"${PF_ANCHOR}"'/ {sub(/\*$/, "", $1); print $1}')
@@ -82,7 +82,7 @@ if sudo pfctl -s info 2>/dev/null | grep -q '^Status: Enabled' && \
     sudo pfctl -d 2>/dev/null || true
 fi
 
-# Remove amnvpn group if it's not referenced by users
+# Remove awarp group if it's not referenced by users
 if dscl . -read "/Groups/$SERVICE_GROUP" >/dev/null 2>&1; then
     group_gid=$(dscl . -read "/Groups/$SERVICE_GROUP" PrimaryGroupID 2>/dev/null | awk '{print $2}')
     users_with_primary_gid=""

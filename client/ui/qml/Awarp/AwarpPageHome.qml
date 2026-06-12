@@ -47,7 +47,7 @@ PageType {
 
         // Latency (ping) to the active endpoint — only while connected.
         // The C++ side runs a single lightweight TCP probe, repeated every few
-        // seconds; -1 means "measuring…".
+        // seconds. latencyMs: >=0 — ms; -1 — measuring; -2 — unavailable.
         LabelTextType {
             id: pingLabel
             objectName: "awarpPingLabel"
@@ -61,7 +61,9 @@ PageType {
             visible: ConnectionController.isConnected
             text: WarpController.latencyMs >= 0
                   ? qsTr("Пинг: %1 мс").arg(WarpController.latencyMs)
-                  : qsTr("Пинг: измерение…")
+                  : WarpController.latencyMs === -1
+                    ? qsTr("Пинг: измерение…")
+                    : qsTr("Пинг: н/д")
 
             Connections {
                 target: ConnectionController

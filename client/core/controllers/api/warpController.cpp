@@ -3,8 +3,6 @@
 #include <QAbstractSocket>
 #include <QDateTime>
 #include <QElapsedTimer>
-#include <QHostAddress>
-#include <QHostInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QNetworkInterface>
@@ -364,87 +362,21 @@ void WarpController::registerAccountViaBootstrap(
 void WarpController::sendWithIPv4(QNetworkRequest request, const QString &logTag,
                                   const std::function<void(const QNetworkRequest &request)> &send)
 {
-    const QUrl url = request.url();
-    const QString host = url.host();
-
-    // If the URL host is already a literal IP address, there is nothing to resolve.
-    if (host.isEmpty() || !QHostAddress(host).isNull()) {
-        send(request);
-        return;
-    }
-
-    // Guard the DNS phase: if the resolver hangs the lookup callback may never
-    // fire and `send` would never be called (no reply → no transferTimeout → no
-    // reg→bootstrap fallback → busy stuck). A watchdog timer guarantees exactly
-    // one `send`: whichever of the lookup callback or the timeout fires first
-    // wins (tracked by the shared `sent` flag), the other is a no-op.
-    auto sent = std::make_shared<bool>(false);
-
-    auto *watchdog = new QTimer(this);
-    watchdog->setSingleShot(true);
-    watchdog->setInterval(protocols::warp::lookupTimeoutMsecs);
-
-    const int lookupId = QHostInfo::lookupHost(
-            host, this,
-            [this, request, host, logTag, send, sent, watchdog](const QHostInfo &info) mutable {
-                if (*sent) {
-                    return;
-                }
-                *sent = true;
-                watchdog->stop();
-                watchdog->deleteLater();
-
-                QHostAddress ipv4;
-                if (info.error() == QHostInfo::NoError) {
-                    for (const QHostAddress &address : info.addresses()) {
-                        if (address.protocol() == QAbstractSocket::IPv4Protocol) {
-                            ipv4 = address;
-                            break;
-                        }
-                    }
-                }
-
-                if (ipv4.isNull()) {
-                    // No A record (IPv6-only or lookup failed): send on the hostname as before.
-                    logger.warning() << "WarpController:" << logTag
-                                     << "— нет IPv4 (A) записи для" << host << ", отправляю по hostname";
-                    send(request);
-                    return;
-                }
-
-                // Connect by IPv4 while keeping the hostname for the HTTP Host header and
-                // the TLS SNI / certificate verification.
-                QUrl ipUrl = request.url();
-                ipUrl.setHost(ipv4.toString());
-                request.setUrl(ipUrl);
-                // Set the HTTP Host header explicitly (this Qt build has no HostHeader
-                // KnownHeaders enum) so the server routes by the original hostname even
-                // though we connect by IP.
-                request.setRawHeader("Host", host.toUtf8());
-                // Keep TLS SNI and certificate verification bound to the hostname.
-                request.setPeerVerifyName(host);
-
-                logger.info() << "WarpController:" << logTag << "via IPv4" << ipv4.toString()
-                              << "(host" << host << ")";
-                send(request);
-            });
-
-    connect(watchdog, &QTimer::timeout, this,
-            [this, request, host, logTag, send, sent, watchdog, lookupId]() mutable {
-                if (*sent) {
-                    return;
-                }
-                *sent = true;
-                QHostInfo::abortHostLookup(lookupId);
-                watchdog->deleteLater();
-                // Resolver stalled: fall through to sending on the hostname (same
-                // path as a missing A record) so the request actually leaves and the
-                // normal transferTimeout / reg→bootstrap fallback can kick in.
-                logger.warning() << "WarpController:" << logTag
-                                 << "— lookupHost timeout for" << host << ", отправляю по hostname";
-                send(request);
-            });
-    watchdog->start();
+    // The request is always sent on its original hostname. We must NOT rewrite
+    // the URL host to a literal IPv4 address: with HTTP/2 (Qt's default) the
+    // `:authority` pseudo-header is built from the URL authority, so a bare IP
+    // breaks Cloudflare/Vercel routing (403 / "Forbidden") and a raw `Host`
+    // header has no effect. Pinning to the first A record also lets a poisoned
+    // resolver (e.g. api.cloudflareclient.com → 8.6.112.0) force a guaranteed
+    // timeout. Sending on the hostname restores correct :authority / SNI
+    // routing and Qt's own multi-address iteration.
+    //
+    // Protection against a hung connection/resolve is provided by the request's
+    // transferTimeout (set by callers): if no data flows within the window the
+    // reply finishes with an error, which keeps the reg→bootstrap fallback and
+    // the busy-flag clearing working.
+    Q_UNUSED(logTag);
+    send(request);
 }
 
 void WarpController::sendRequestAsync(const QByteArray &verb, const QString &endpoint, const QJsonObject &body,

@@ -30,7 +30,7 @@ jobs:
   Bake-Prebuilts-Linux:
     runs-on: ubuntu-latest
     needs: Detect-Changes
-    if: needs.Detect-Changes.outputs.recipes_changed == 'true'
+    if: false
 
     steps:
     - uses: actions/checkout@v4
@@ -66,7 +66,7 @@ jobs:
     runs-on: android-runner
 
     needs: Bake-Prebuilts-Linux
-    if: ${{ always() }}
+    if: false
 
     env:
       QT_VERSION: 6.10.1
@@ -139,7 +139,7 @@ jobs:
   Bake-Prebuilts-Windows:
     runs-on: windows-latest
     needs: Detect-Changes
-    if: needs.Detect-Changes.outputs.recipes_changed == 'true'
+    if: false
 
     steps:
     - uses: actions/checkout@v4
@@ -173,7 +173,7 @@ jobs:
     runs-on: windows-latest
 
     needs: Bake-Prebuilts-Windows
-    if: ${{ always() }}
+    if: false
 
     env:
       QT_VERSION: 6.10.1
@@ -264,7 +264,7 @@ jobs:
 
   Bake-Prebuilts-iOS:
     needs: Detect-Changes
-    if: needs.Detect-Changes.outputs.recipes_changed == 'true'
+    if: false
 
     strategy:
       matrix:
@@ -309,7 +309,7 @@ jobs:
     runs-on: macos-latest
 
     needs: Bake-Prebuilts-iOS
-    if: ${{ always() }}
+    if: false
 
     env:
       QT_VERSION: 6.10.1
@@ -408,7 +408,7 @@ jobs:
 
   Bake-Prebuilts-MacOS:
     needs: Detect-Changes
-    if: needs.Detect-Changes.outputs.recipes_changed == 'true'
+    if: false
 
     strategy:
       matrix:
@@ -453,7 +453,7 @@ jobs:
     runs-on: macos-latest
 
     needs: Bake-Prebuilts-MacOS
-    if: ${{ always() }}
+    if: false
 
     env:
       QT_VERSION: 6.10.1
@@ -544,7 +544,7 @@ jobs:
 
   Bake-Prebuilts-MacOS-NE:
     needs: Detect-Changes
-    if: needs.Detect-Changes.outputs.recipes_changed == 'true'
+    if: false
 
     strategy:
       matrix:
@@ -589,7 +589,7 @@ jobs:
     runs-on: macos-latest
 
     needs: Bake-Prebuilts-MacOS-NE
-    if: ${{ always() }}
+    if: false
 
     env:
       QT_VERSION: 6.10.1
